@@ -17,7 +17,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(morgan("dev"));
+app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -42,6 +42,27 @@ app.get("/api/v1/health", async (_req: Request, res: Response) => {
       message: "Database unreachable",
     });
   }
+});
+
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: "MediMind API",
+    endpoints: {
+      health: "/api/v1/health",
+    },
+  });
+});
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.redirect("/api/v1/health");
+});
+
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
 
 export default app;

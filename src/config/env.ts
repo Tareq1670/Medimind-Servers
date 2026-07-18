@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 interface EnvConfig {
   port: number;
@@ -16,7 +18,7 @@ function loadEnvConfig(): EnvConfig {
   const nodeEnv = process.env.NODE_ENV ?? "development";
   const mongodbUri = process.env.MONGODB_URI ?? "";
   const dbName = process.env.DB_NAME ?? "";
-  const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+  const frontendUrl = (process.env.FRONTEND_URL ?? "http://localhost:3000").trim();
 
   if (!mongodbUri) {
     throw new Error("MONGODB_URI environment variable is required");
