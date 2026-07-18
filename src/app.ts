@@ -58,6 +58,10 @@ app.get("/health", (_req: Request, res: Response) => {
   res.redirect("/api/v1/health");
 });
 
+app.get("/favicon.ico", (_req: Request, res: Response) => {
+  res.status(204).end();
+});
+
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     success: false,
