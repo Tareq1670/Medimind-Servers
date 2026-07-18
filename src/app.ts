@@ -1,9 +1,9 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import { getDB } from "./config/db.js";
+import { connectDB, getDB } from "./config/db.js";
 import { env } from "./config/env.js";
 import authRoutes from "./routes/auth.routes.js";
 import protectedRoutes from "./routes/protected.routes.js";
@@ -20,6 +20,11 @@ app.use(
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(cookieParser());
+
+app.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  await connectDB();
+  next();
+});
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/protected", protectedRoutes);
