@@ -4,7 +4,7 @@ exports.ProfileUpdateSchema = exports.LoginSchema = exports.RegisterSchema = voi
 const zod_1 = require("zod");
 exports.RegisterSchema = zod_1.z.object({
     name: zod_1.z.string().min(2, "Name must be at least 2 characters").max(100),
-    email: zod_1.z.string().email("Invalid email address").transform((v) => v.toLowerCase()),
+    email: zod_1.z.email("Invalid email address").transform((v) => v.toLowerCase()),
     password: zod_1.z.string().min(8, "Password must be at least 8 characters"),
     role: zod_1.z.enum(["user", "doctor"]).optional().default("user"),
     avatar: zod_1.z.string().url("Invalid avatar URL").optional(),
@@ -31,7 +31,7 @@ exports.RegisterSchema = zod_1.z.object({
         .optional(),
 });
 exports.LoginSchema = zod_1.z.object({
-    email: zod_1.z.string().email("Invalid email address").transform((v) => v.toLowerCase()),
+    email: zod_1.z.email("Invalid email address").transform((v) => v.toLowerCase()),
     password: zod_1.z.string().min(1, "Password is required"),
 });
 exports.ProfileUpdateSchema = zod_1.z.object({

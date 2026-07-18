@@ -18,6 +18,10 @@ function loadEnvConfig(): EnvConfig {
   const dbName = process.env.DB_NAME ?? "";
   const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
 
+  if (!mongodbUri) {
+    throw new Error("MONGODB_URI environment variable is required");
+  }
+
   if (!mongodbUri.startsWith("mongodb://") && !mongodbUri.startsWith("mongodb+srv://")) {
     throw new Error(
       `Invalid MONGODB_URI: must start with mongodb:// or mongodb+srv://`

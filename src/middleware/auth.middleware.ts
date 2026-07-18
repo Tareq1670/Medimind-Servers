@@ -25,8 +25,14 @@ export async function protectRoute(
     }
 
     const { payload } = await jwtVerify(token, JWKS);
+
+    if (!payload.sub) {
+      sendError(res, "Invalid token: missing subject", 401);
+      return;
+    }
+
     req.user = {
-      userId: payload.sub as string,
+      userId: payload.sub,
       role: (payload.role as AuthPayload["role"]) ?? "user",
     };
     next();

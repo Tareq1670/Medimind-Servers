@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const RegisterSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
-  email: z.string().email("Invalid email address").transform((v) => v.toLowerCase()),
+  email: z.email("Invalid email address").transform((v) => v.toLowerCase()),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["user", "doctor"]).optional().default("user"),
   avatar: z.string().url("Invalid avatar URL").optional(),
@@ -30,7 +30,7 @@ export const RegisterSchema = z.object({
 });
 
 export const LoginSchema = z.object({
-  email: z.string().email("Invalid email address").transform((v) => v.toLowerCase()),
+  email: z.email("Invalid email address").transform((v) => v.toLowerCase()),
   password: z.string().min(1, "Password is required"),
 });
 

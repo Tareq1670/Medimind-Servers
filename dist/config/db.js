@@ -14,9 +14,6 @@ async function connectDB() {
         minPoolSize: 10,
         connectTimeoutMS: 10000,
     });
-    client.on("open", () => {
-        console.log("MongoDB driver connection channel established.");
-    });
     client.on("error", (err) => {
         console.error("MongoDB connection error:", err);
     });

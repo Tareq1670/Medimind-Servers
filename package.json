@@ -4,12 +4,11 @@
   "description": "MediMind - AI-Powered Healthcare & Medicine Assistant Platform (Backend)",
   "private": true,
   "scripts": {
-    "dev": "nodemon",
+    "dev": "node scripts/free-port.cjs && nodemon",
     "build": "tsc",
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -21,11 +20,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/mongodb": "^4.0.6",
+    "@types/express": "^4.17.21",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.13.4",
     "nodemon": "^3.1.9",
