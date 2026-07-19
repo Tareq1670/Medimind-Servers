@@ -1,0 +1,44 @@
+[33mcommit d0a9897620d7c3d7b594dce421c40b07b38c4c02[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Tareq <tariqulislamtareq1670@gmail.com>
+Date:   Sun Jul 19 09:41:08 2026 +0600
+
+    Add CRUD services and request validators
+
+ .env | 15 [32m++++++++++++++[m[31m-[m
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+[33mcommit d070fa7a761ac0a546f916a985666d2fab0f2926[m[33m ([m[1;31morigin/main[m[33m)[m
+Author: Tareq <tariqulislamtareq1670@gmail.com>
+Date:   Sat Jul 18 19:08:44 2026 +0600
+
+    Update environment configuration and add favicon route
+
+ .env | 2 [32m+[m[31m-[m
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+[33mcommit 41e6bd2d9035d65612340ecfc75afe42845d754b[m
+Author: Tareq <tariqulislamtareq1670@gmail.com>
+Date:   Sat Jul 18 17:25:09 2026 +0600
+
+    Configure backend for serverless deployment
+
+ .env | 2 [32m+[m[31m-[m
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+[33mcommit d2e39b407d8546de56ea183a5a9e4e91540678b4[m
+Author: Tareq <tariqulislamtareq1670@gmail.com>
+Date:   Sat Jul 18 16:53:24 2026 +0600
+
+    Create Medimind server side and stracture create
+
+ .env | 2 [32m+[m[31m-[m
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+[33mcommit b2b2ce9c6ca75cb1b806e00545edd7790a14c463[m
+Author: Tareq <tariqulislamtareq1670@gmail.com>
+Date:   Sat Jul 18 12:34:59 2026 +0600
+
+    Create backend foundation for MediMind
+
+ .env | 5 [32m+++++[m
+ 1 file changed, 5 insertions(+)
