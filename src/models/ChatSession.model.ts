@@ -4,6 +4,7 @@ export interface IMessage {
   senderId: Types.ObjectId;
   content: string;
   timestamp: Date;
+  suggestedFollowUps?: string[];
 }
 
 export type ChatStatus = "Active" | "Closed";
@@ -12,6 +13,7 @@ export interface IChatSession extends Document {
   participants: Types.ObjectId[];
   messages: IMessage[];
   status: ChatStatus;
+  sessionTitle?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,7 @@ const messageSchema = new Schema<IMessage>(
     senderId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     content: { type: String, required: true, trim: true },
     timestamp: { type: Date, default: Date.now },
+    suggestedFollowUps: { type: [String] },
   },
   { _id: false }
 );
@@ -30,6 +33,7 @@ const chatSessionSchema = new Schema<IChatSession>(
     participants: [{ type: Schema.Types.ObjectId, ref: "User" }],
     messages: { type: [messageSchema], default: [] },
     status: { type: String, enum: ["Active", "Closed"], default: "Active", index: true },
+    sessionTitle: { type: String, trim: true },
   },
   { timestamps: true }
 );

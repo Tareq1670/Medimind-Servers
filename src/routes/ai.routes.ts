@@ -5,6 +5,11 @@ import { upload } from "../middleware/upload.js";
 import {
   symptomAnalysisSchema,
   reportAnalysisSchema,
+  chatMessageSchema,
+  generateBlogSchema,
+  recommendationSchema,
+  healthInsightsSchema,
+  classifyTagsSchema,
   aiHistoryQuerySchema,
 } from "../validators/ai.validator.js";
 import * as aiController from "../controllers/ai.controller.js";
@@ -24,6 +29,41 @@ router.post(
   upload.single("reportImage"),
   validateRequest(reportAnalysisSchema),
   aiController.analyzeReport
+);
+
+router.post(
+  "/chat",
+  verifyToken,
+  validateRequest(chatMessageSchema),
+  aiController.chatMessage
+);
+
+router.post(
+  "/generate-blog",
+  verifyToken,
+  validateRequest(generateBlogSchema),
+  aiController.generateBlog
+);
+
+router.post(
+  "/medicine-recommendation",
+  verifyToken,
+  validateRequest(recommendationSchema),
+  aiController.getRecommendations
+);
+
+router.post(
+  "/health-insights",
+  verifyToken,
+  validateRequest(healthInsightsSchema),
+  aiController.getHealthInsights
+);
+
+router.post(
+  "/classify-tags",
+  verifyToken,
+  validateRequest(classifyTagsSchema),
+  aiController.classifyTags
 );
 
 router.get(
