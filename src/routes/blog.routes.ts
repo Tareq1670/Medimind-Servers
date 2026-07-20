@@ -38,6 +38,15 @@ router.put(
   blogController.updateBlog
 );
 
+router.patch(
+  "/:id",
+  verifyToken,
+  authorizeRoles("admin", "doctor"),
+  upload.single("coverImage"),
+  validateRequest(updateBlogSchema),
+  blogController.updateBlog
+);
+
 router.delete(
   "/:id",
   verifyToken,

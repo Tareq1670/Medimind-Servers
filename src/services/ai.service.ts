@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { symptomAnalysesCol, reportAnalysesCol, chatSessionsCol, medicinesCol, conditionsCol, healthRecordsCol, toObjectId } from "../db/collections.js";
+import { symptomAnalysesCol, reportAnalysesCol, chatSessionsCol, healthRecordsCol, toObjectId } from "../db/collections.js";
 import type { ISymptomAnalysis, IAiSymptomAnalysis, IReportAnalysis, IChatSession, PaginatedResult } from "../types/models.js";
 import { generateWithPro, generateWithFlash, streamChat, analyzeImageWithVision } from "./gemini.service.js";
 import { analyzeWithGroq } from "./groq.service.js";
@@ -14,7 +14,7 @@ interface HistoryQuery {
 const MEDICAL_DISCLAIMER =
   "⚠️ This analysis is for educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider for medical decisions. In case of emergency, contact emergency services immediately.";
 
-function buildSymptomPrompt(
+export function buildSymptomPrompt(
   symptoms: string[], duration?: string, severity?: string, additionalInfo?: string
 ): string {
   return `You are MediMind's medical AI assistant. Analyze the following symptoms and provide a structured medical assessment.
@@ -154,16 +154,43 @@ Format as JSON array of strings (no markdown, no code fences):
 ["question 1", "question 2", "question 3"]`;
 }
 
-function parseJson<T>(raw: string, fallback: T): T {
+function parseJson<T>(raw: string, fallback: T, context?: string): T {
   try {
     const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     return JSON.parse(cleaned) as T;
-  } catch {
+  } catch (err) {
+    console.warn(`[parseJson] Failed to parse AI response${context ? ` (${context})` : ""}:`, (raw ?? "").slice(0, 200));
     return fallback;
   }
 }
 
 // ─── Symptom Analysis ───────────────────────────────────────────
+
+export async function analyzeWithGroqFallback(prompt: string): Promise<IAiSymptomAnalysis> {
+  const fallback: IAiSymptomAnalysis = {
+    urgencyLevel: "routine",
+    urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
+    possibleConditions: [],
+    recommendations: ["Monitor symptoms and consult a doctor if they persist."],
+    warningSignsToWatch: [],
+    shouldSeeDoctor: false,
+    disclaimer: MEDICAL_DISCLAIMER,
+  };
+
+  try {
+    const raw = await analyzeWithGroq(prompt);
+    return parseJson(raw, fallback, "groq-symptom");
+  } catch (groqErr) {
+    console.error("[symptom-analysis] Groq failed:", groqErr instanceof Error ? groqErr.message : groqErr);
+    try {
+      const raw = await generateWithFlash(prompt);
+      return parseJson(raw, fallback, "gemini-flash-symptom");
+    } catch (geminiErr) {
+      console.error("[symptom-analysis] Gemini Flash also failed:", geminiErr instanceof Error ? geminiErr.message : geminiErr);
+      return fallback;
+    }
+  }
+}
 
 export async function analyzeSymptoms(
   patientId: string,
@@ -173,31 +200,30 @@ export async function analyzeSymptoms(
   additionalInfo?: string
 ): Promise<ISymptomAnalysis> {
   const prompt = buildSymptomPrompt(symptoms, duration, severity, additionalInfo);
+  const parseFallback: IAiSymptomAnalysis = {
+    urgencyLevel: "routine",
+    urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
+    possibleConditions: [],
+    recommendations: ["Monitor symptoms and consult a doctor if they persist."],
+    warningSignsToWatch: [],
+    shouldSeeDoctor: false,
+    disclaimer: MEDICAL_DISCLAIMER,
+  };
+
   let aiAnalysis: IAiSymptomAnalysis;
 
   try {
     const raw = await analyzeWithGroq(prompt);
-    aiAnalysis = parseJson(raw, {
-      urgencyLevel: "routine",
-      urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
-      possibleConditions: [],
-      recommendations: ["Monitor symptoms and consult a doctor if they persist."],
-      warningSignsToWatch: [],
-      shouldSeeDoctor: false,
-      disclaimer: MEDICAL_DISCLAIMER,
-    });
-  } catch {
-    console.error("Groq analysis failed, falling back to Gemini Flash");
-    const raw = await generateWithFlash(prompt);
-    aiAnalysis = parseJson(raw, {
-      urgencyLevel: "routine",
-      urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
-      possibleConditions: [],
-      recommendations: ["Monitor symptoms and consult a doctor if they persist."],
-      warningSignsToWatch: [],
-      shouldSeeDoctor: false,
-      disclaimer: MEDICAL_DISCLAIMER,
-    });
+    aiAnalysis = parseJson(raw, parseFallback, "groq-symptom-auth");
+  } catch (groqErr) {
+    console.error("[symptom-analysis-auth] Groq failed:", groqErr instanceof Error ? groqErr.message : groqErr);
+    try {
+      const raw = await generateWithFlash(prompt);
+      aiAnalysis = parseJson(raw, parseFallback, "gemini-flash-symptom-auth");
+    } catch (geminiErr) {
+      console.error("[symptom-analysis-auth] Gemini Flash also failed:", geminiErr instanceof Error ? geminiErr.message : geminiErr);
+      aiAnalysis = parseFallback;
+    }
   }
 
   const doc: ISymptomAnalysis = {
@@ -220,13 +246,35 @@ export async function analyzeSymptoms(
 
 // ─── Report Analysis (Vision) ────────────────────────────────────
 
+export interface ReportAnalysisResult {
+  _id: ObjectId | string;
+  reportType: string;
+  reportName?: string;
+  parameters: Array<Record<string, unknown>>;
+  overallAssessment: string;
+  followUpActions: string[];
+  urgencyLevel: string;
+  disclaimer: string;
+  aiAnalysis: {
+    summary: string;
+    keyFindings: string[];
+    recommendations: string[];
+    riskIndicators: string[];
+    normalValues: Record<string, unknown>;
+    abnormalValues: Record<string, unknown>;
+  };
+  uploadedImageUrl?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export async function analyzeReport(
   patientId: string,
   reportType: string,
   uploadedImageUrl: string,
   reportName?: string,
   additionalNotes?: string
-): Promise<IReportAnalysis> {
+): Promise<ReportAnalysisResult> {
   const visionPrompt = `Analyze this medical report/document. Extract all medical values, parameters, and information. Provide a comprehensive analysis including:
 
 1. Report type identification
@@ -252,9 +300,12 @@ Format as JSON (no markdown, no code fences):
 
   try {
     const raw = await analyzeImageWithVision(uploadedImageUrl, visionPrompt);
-    aiOutput = parseJson(raw, {} as Record<string, unknown>);
-  } catch {
-    console.error("Vision analysis failed, using fallback");
+    aiOutput = parseJson(raw, {} as Record<string, unknown>, "vision-report");
+    if (Object.keys(aiOutput).length === 0) {
+      throw new Error("AI returned empty/unparseable response");
+    }
+  } catch (err) {
+    console.error("[report-analysis] Vision analysis failed:", err instanceof Error ? err.message : err);
     aiOutput = {
       reportType,
       parameters: [],
@@ -307,7 +358,29 @@ Format as JSON (no markdown, no code fences):
   };
 
   const result = await reportAnalysesCol().insertOne(doc);
-  return { ...doc, _id: result.insertedId };
+  const saved = { ...doc, _id: result.insertedId };
+
+  return {
+    _id: saved._id,
+    reportType: saved.reportType,
+    reportName: saved.reportName,
+    parameters: (aiOutput.parameters as Array<Record<string, unknown>>) ?? [],
+    overallAssessment: (aiOutput.overallAssessment as string) ?? "Analysis complete.",
+    followUpActions: (aiOutput.followUpActions as string[]) ?? ["Consult your healthcare provider."],
+    urgencyLevel: (aiOutput.urgencyLevel as "routine" | "urgent" | "emergency") ?? "routine",
+    disclaimer: (aiOutput.disclaimer as string) ?? MEDICAL_DISCLAIMER,
+    aiAnalysis: saved.aiAnalysis ?? {
+      summary: "Analysis complete.",
+      keyFindings: [],
+      recommendations: [],
+      riskIndicators: [],
+      normalValues: {},
+      abnormalValues: {},
+    },
+    uploadedImageUrl: saved.uploadedImageUrl,
+    createdAt: saved.createdAt,
+    updatedAt: saved.updatedAt,
+  };
 }
 
 // ─── Chat Message (Streaming) ────────────────────────────────────
@@ -351,9 +424,10 @@ export async function chatMessage(
     fullResponse = await streamChat(chatMessages, SYSTEM_PROMPT, (chunk) => {
       onChunk?.(chunk);
     });
-  } catch {
-    console.error("Chat streaming failed");
-    fullResponse = `${MEDICAL_DISCLAIMER}\n\nI apologize, but I'm having trouble processing your request. Please try again or consult a healthcare professional for immediate concerns.`;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[chat] Streaming failed:", errMsg);
+    fullResponse = `${MEDICAL_DISCLAIMER}\n\nI'm sorry, I'm having trouble connecting to the AI service right now. This could be due to a temporary issue. Please try again in a moment.`;
     onChunk?.(fullResponse);
   }
 
@@ -368,9 +442,9 @@ export async function chatMessage(
       "What are the common causes?",
       "When should I see a doctor?",
       "Are there any home remedies?",
-    ]);
-  } catch {
-    console.error("Follow-up generation failed");
+    ], "chat-followups");
+  } catch (err) {
+    console.error("[chat] Follow-up generation failed:", err instanceof Error ? err.message : err);
     followUps = [
       "What are the common causes?",
       "When should I see a doctor?",
@@ -413,7 +487,7 @@ export async function generateBlog(
     readTime: 5,
     content: raw,
     keyTakeaways: ["Consult a healthcare professional for personalized advice."],
-  });
+  }, "blog-generation");
 }
 
 // ─── Medicine Recommendations ────────────────────────────────────
@@ -432,7 +506,7 @@ export async function getRecommendations(
     lifestyleTips: ["Maintain a balanced diet", "Exercise regularly", "Stay hydrated"],
     monitoringSuggestions: ["Track your symptoms", "Monitor vital signs regularly"],
     disclaimer: MEDICAL_DISCLAIMER,
-  });
+  }, "recommendations");
 }
 
 // ─── Health Insights ─────────────────────────────────────────────
@@ -465,7 +539,7 @@ export async function getHealthInsights(userId: string): Promise<Record<string, 
     positiveProgress: ["Health records being tracked consistently"],
     overallAssessment: `Analysis of ${records.length} health records completed.`,
     disclaimer: MEDICAL_DISCLAIMER,
-  });
+  }, "health-insights");
 }
 
 // ─── Classify Tags ───────────────────────────────────────────────
@@ -481,14 +555,15 @@ export async function classifyTags(title: string, description: string): Promise<
       .filter((w) => w.length > 3)
       .slice(0, 5),
     category: "General",
-  });
+  }, "classify-tags");
 }
 
 // ─── History ─────────────────────────────────────────────────────
 
 export async function getHistory(patientId: string, opts: HistoryQuery): Promise<PaginatedResult<Record<string, unknown>>> {
-  const symptomFilter = { patientId };
-  const reportFilter = { patientId };
+  const patientOid = toObjectId(patientId);
+  const symptomFilter = { patientId: patientOid };
+  const reportFilter = { patientId: patientOid };
 
   if (opts.type === "symptom") {
     const col = symptomAnalysesCol();

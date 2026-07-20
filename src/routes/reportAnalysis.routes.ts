@@ -24,7 +24,6 @@ router.get("/:id", verifyToken, reportController.getReportById);
 router.post(
   "/",
   verifyToken,
-  authorizeRoles("admin", "doctor"),
   upload.single("uploadedImage"),
   validateRequest(createReportAnalysisSchema),
   reportController.createReport

@@ -1,12 +1,13 @@
 import { ObjectId } from "mongodb";
 import { symptomAnalysesCol, usersCol, toObjectId } from "../db/collections.js";
 import type { ISymptomAnalysis, PaginatedResult } from "../types/models.js";
-import { paginate } from "../utils/pagination.js";
+import { paginate, andFilter, regexSearch } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
   limit: number;
   patientId?: string;
+  search?: string;
 }
 
 async function attachPatientInfo<T extends { patientId?: ObjectId | string }>(items: T[]): Promise<T[]> {
@@ -24,9 +25,19 @@ async function attachPatientInfo<T extends { patientId?: ObjectId | string }>(it
 export async function getAllAnalyses(
   opts: QueryOptions & { userId?: string; isAdmin?: boolean }
 ): Promise<PaginatedResult<ISymptomAnalysis>> {
-  const filter: Record<string, unknown> = {};
-  if (opts.patientId) filter.patientId = opts.patientId;
-  if (!opts.isAdmin && opts.userId) filter.patientId = opts.userId;
+  const conditions: Record<string, unknown>[] = [];
+  if (opts.patientId) conditions.push({ patientId: opts.patientId });
+  if (!opts.isAdmin && opts.userId) conditions.push({ patientId: opts.userId });
+  if (opts.search) {
+    conditions.push({
+      $or: [
+        { additionalInfo: { $regex: opts.search, $options: "i" } },
+        { AI_Assessment_Result: { $regex: opts.search, $options: "i" } },
+        { reportedSymptoms: { $regex: opts.search, $options: "i" } },
+      ],
+    });
+  }
+  const filter = andFilter(conditions);
 
   const col = symptomAnalysesCol();
   const total = await col.countDocuments(filter);

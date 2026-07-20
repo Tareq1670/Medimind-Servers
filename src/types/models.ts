@@ -8,6 +8,10 @@ export interface IUser {
   email: string;
   role: UserRole;
   avatar?: string;
+  image?: string;
+  dob?: string;
+  bloodGroup?: string;
+  banned?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +26,8 @@ export interface IMedicine {
   stockQuantity: number;
   description: string;
   image?: string;
+  dosageForm?: string;
+  strength?: string;
   isPrescriptionRequired: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -202,15 +208,29 @@ export interface ISymptomAnalysis {
 }
 
 export interface DashboardStats {
-  users: { total: number; patients: number; doctors: number; admins: number; newThisMonth: number };
-  medicines: { total: number; prescriptionRequired: number; lowStock: number };
-  doctors: { total: number; verified: number; unverified: number };
-  reviews: { total: number; pendingApproval: number; averageRating: number };
-  blogs: { total: number; published: number; drafts: number };
-  conditions: { total: number };
-  chatSessions: { total: number; active: number; closed: number };
-  reportAnalyses: { total: number };
-  symptomAnalyses: { total: number };
+  user?: {
+    healthScore: number;
+    recordCount: number;
+    recentActivity: { label: string; value: string; date: string }[];
+    vitalsTrend: { date: string; value: number }[];
+  };
+  doctor?: {
+    patientCount: number;
+    appointmentCount: number;
+    reviewCount: number;
+    earnings: number;
+  };
+  admin?: {
+    totalUsers: number;
+    totalDoctors: number;
+    totalPatients: number;
+    totalMedicines: number;
+    totalReviews: number;
+    userGrowth: { date: string; count: number }[];
+    contentGrowth: { date: string; medicines: number; blogs: number }[];
+    aiUsage: { date: string; count: number }[];
+    systemHealth: { mongodb: boolean; api: boolean; ai: boolean };
+  };
 }
 
 export interface PaginatedResult<T> {

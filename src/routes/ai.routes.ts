@@ -21,7 +21,6 @@ router.use(aiRateLimiter);
 
 router.post(
   "/symptom-analysis",
-  verifyToken,
   validateRequest(symptomAnalysisSchema),
   aiController.analyzeSymptoms
 );

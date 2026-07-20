@@ -35,6 +35,14 @@ router.put(
   conditionController.updateCondition
 );
 
+router.patch(
+  "/:id",
+  verifyToken,
+  authorizeRoles("admin", "doctor"),
+  validateRequest(updateHealthConditionSchema),
+  conditionController.updateCondition
+);
+
 router.delete(
   "/:id",
   verifyToken,

@@ -2,7 +2,9 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { verifyToken } from "../middleware/auth.middleware.js";
+import { authorizeRoles } from "../middleware/authorizeRoles.js";
 import { validateRequest } from "../middleware/validateRequest.js";
+import { userQuerySchema } from "../validators/user.validator.js";
 import * as authController from "../controllers/auth.controller.js";
 
 const authLimiter = rateLimit({
@@ -36,11 +38,24 @@ const loginSchema = z.object({
   params: z.object({}).default({}),
 });
 
+const updateProfileSchema = z.object({
+  body: z.object({
+    name: z.string().min(2).max(100).optional(),
+    dob: z.string().optional(),
+    bloodGroup: z.string().optional(),
+    avatar: z.string().url().optional(),
+  }),
+  query: z.object({}).default({}),
+  params: z.object({}).default({}),
+});
+
 const router = Router();
 
 router.post("/register", authLimiter, validateRequest(registerSchema), authController.register);
 router.post("/login", authLimiter, validateRequest(loginSchema), authController.login);
 router.post("/logout", authController.logout);
 router.get("/me", verifyToken, authController.getProfile);
+router.patch("/profile", verifyToken, validateRequest(updateProfileSchema), authController.updateProfile);
+router.get("/users", verifyToken, authorizeRoles("admin"), validateRequest(userQuerySchema), authController.getAllUsers);
 
 export default router;

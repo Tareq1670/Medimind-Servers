@@ -39,7 +39,7 @@ export async function getReportById(req: Request, res: Response): Promise<void> 
       sendError(res, "Report not found", 404);
       return;
     }
-    if (report.patientId.toString() !== userId && req.user?.role !== "admin") {
+    if (report.patientId.toString() !== userId && req.user?.role !== "admin" && req.user?.role !== "doctor") {
       sendError(res, "Not authorized to view this report", 403);
       return;
     }
@@ -81,7 +81,7 @@ export async function updateReport(req: Request, res: Response): Promise<void> {
       sendError(res, "Report not found", 404);
       return;
     }
-    if (report.patientId.toString() !== userId && req.user?.role !== "admin") {
+    if (report.patientId.toString() !== userId && req.user?.role !== "admin" && req.user?.role !== "doctor") {
       sendError(res, "Not authorized to update this report", 403);
       return;
     }
@@ -112,7 +112,7 @@ export async function deleteReport(req: Request, res: Response): Promise<void> {
       sendError(res, "Report not found", 404);
       return;
     }
-    if (report.patientId.toString() !== userId && req.user?.role !== "admin") {
+    if (report.patientId.toString() !== userId && req.user?.role !== "admin" && req.user?.role !== "doctor") {
       sendError(res, "Not authorized to delete this report", 403);
       return;
     }

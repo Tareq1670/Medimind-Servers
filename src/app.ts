@@ -14,12 +14,12 @@ import blogRoutes from "./routes/blog.routes.js";
 import reviewRoutes from "./routes/review.routes.js";
 import chatSessionRoutes from "./routes/chatSession.routes.js";
 import reportAnalysisRoutes from "./routes/reportAnalysis.routes.js";
-import healthRecordRoutes from "./routes/healthRecord.routes.js";
 import symptomAnalysisRoutes from "./routes/symptomAnalysis.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import statsRoutes from "./routes/stats.routes.js";
 import recordRoutes from "./routes/record.routes.js";
+import healthRecordAliasRoutes from "./routes/healthRecordAlias.routes.js";
 
 const app = express();
 
@@ -74,12 +74,12 @@ app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1/reviews", reviewRoutes);
 app.use("/api/v1/chat-sessions", chatSessionRoutes);
 app.use("/api/v1/report-analyses", reportAnalysisRoutes);
-app.use("/api/v1/health-records", healthRecordRoutes);
 app.use("/api/v1/symptom-analyses", symptomAnalysisRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1/stats", statsRoutes);
 app.use("/api/v1/records", recordRoutes);
+app.use("/api/v1/health-records", healthRecordAliasRoutes);
 
 app.get("/api/v1/health", async (_req: Request, res: Response) => {
   try {
@@ -112,7 +112,6 @@ app.get("/", (_req: Request, res: Response) => {
       reviews: "/api/v1/reviews",
       chatSessions: "/api/v1/chat-sessions",
       reportAnalyses: "/api/v1/report-analyses",
-      healthRecords: "/api/v1/health-records",
       symptomAnalyses: "/api/v1/symptom-analyses",
       ai: "/api/v1/ai",
       upload: "/api/v1/upload",

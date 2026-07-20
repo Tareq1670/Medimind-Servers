@@ -51,5 +51,13 @@ export const doctorQuerySchema = z.object({
   params: z.object({}).default({}),
 });
 
+export const updateScheduleSchema = z.object({
+  body: z.object({
+    slots: z.array(availabilitySlotSchema),
+  }),
+  query: z.object({}).default({}),
+  params: z.object({}).default({}),
+});
+
 export type CreateDoctorInput = z.infer<typeof createDoctorSchema>["body"];
 export type UpdateDoctorInput = z.infer<typeof updateDoctorSchema>["body"];

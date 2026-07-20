@@ -13,6 +13,7 @@ interface QueryOptions {
   prescription?: string;
   sortBy?: string;
   sortOrder?: string;
+  stock?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -35,6 +36,11 @@ function buildFilter(opts: QueryOptions): Record<string, unknown> {
   } else if (opts.prescription === "false") {
     conditions.push({ isPrescriptionRequired: false });
   }
+  if (opts.stock === "low") {
+    conditions.push({ stockQuantity: { $gt: 0, $lt: 10 } });
+  } else if (opts.stock === "out") {
+    conditions.push({ stockQuantity: 0 });
+  }
 
   return andFilter(conditions);
 }
@@ -45,7 +51,7 @@ export async function getAllMedicines(opts: QueryOptions): Promise<PaginatedResu
   const total = await col.countDocuments(filter);
   const { pagination } = await paginate(total, opts);
 
-  const allowedSorts: Record<string, 1 | -1> = { name: 1, price: 1, rating: 1, createdAt: 1 };
+  const allowedSorts: Record<string, 1 | -1> = { name: 1, price: 1, createdAt: 1, stockQuantity: 1 };
   const sortField = opts.sortBy && opts.sortBy in allowedSorts ? opts.sortBy : "createdAt";
   const sortDir = opts.sortOrder === "asc" ? 1 : -1;
 
@@ -71,6 +77,8 @@ export async function createMedicine(data: Record<string, unknown>): Promise<IMe
     stockQuantity: Number(data.stockQuantity) || 0,
     description: data.description as string,
     image: data.image as string | undefined,
+    dosageForm: data.dosageForm as string | undefined,
+    strength: data.strength as string | undefined,
     isPrescriptionRequired: Boolean(data.isPrescriptionRequired),
     createdAt: new Date(),
     updatedAt: new Date(),

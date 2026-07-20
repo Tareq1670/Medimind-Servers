@@ -5,6 +5,7 @@ import { validateRequest } from "../middleware/validateRequest.js";
 import {
   createDoctorSchema,
   updateDoctorSchema,
+  updateScheduleSchema,
   doctorQuerySchema,
 } from "../validators/doctor.validator.js";
 import * as doctorController from "../controllers/doctor.controller.js";
@@ -17,8 +18,6 @@ router.get(
   doctorController.getAllDoctors
 );
 
-router.get("/:id", doctorController.getDoctorById);
-
 router.post(
   "/",
   verifyToken,
@@ -27,7 +26,39 @@ router.post(
   doctorController.createDoctor
 );
 
+router.get(
+  "/schedule",
+  verifyToken,
+  authorizeRoles("doctor"),
+  doctorController.getMySchedule
+);
+
+router.post(
+  "/schedule",
+  verifyToken,
+  authorizeRoles("doctor"),
+  validateRequest(updateScheduleSchema),
+  doctorController.updateMySchedule
+);
+
+router.get(
+  "/patients",
+  verifyToken,
+  authorizeRoles("doctor"),
+  doctorController.getMyPatients
+);
+
+router.get("/:id", doctorController.getDoctorById);
+
 router.put(
+  "/:id",
+  verifyToken,
+  authorizeRoles("admin", "doctor"),
+  validateRequest(updateDoctorSchema),
+  doctorController.updateDoctor
+);
+
+router.patch(
   "/:id",
   verifyToken,
   authorizeRoles("admin", "doctor"),

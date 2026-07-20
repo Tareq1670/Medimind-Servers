@@ -14,19 +14,24 @@ function getUserId(req: Request, res: Response): string | null {
 
 export async function analyzeSymptoms(req: Request, res: Response): Promise<void> {
   try {
-    const userId = getUserId(req, res);
-    if (!userId) return;
+    const userId = req.user?.userId;
 
     const { reportedSymptoms, duration, severity, additionalInfo } = req.body;
 
-    const analysis = await aiService.analyzeSymptoms(
-      userId,
-      reportedSymptoms,
-      duration,
-      severity,
-      additionalInfo
-    );
-    sendSuccess(res, analysis, "Symptom analysis complete", 201);
+    if (userId) {
+      const analysis = await aiService.analyzeSymptoms(
+        userId,
+        reportedSymptoms,
+        duration,
+        severity,
+        additionalInfo
+      );
+      sendSuccess(res, analysis, "Symptom analysis complete", 201);
+    } else {
+      const prompt = aiService.buildSymptomPrompt(reportedSymptoms, duration, severity, additionalInfo);
+      const result = await aiService.analyzeWithGroqFallback(prompt);
+      sendSuccess(res, result, "Symptom analysis complete");
+    }
   } catch (err) {
     sendError(res, err instanceof Error ? err.message : "Failed to analyze symptoms");
   }
@@ -73,7 +78,14 @@ export async function chatMessage(req: Request, res: Response): Promise<void> {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
+
+    let clientDisconnected = false;
+    req.on("close", () => {
+      clientDisconnected = true;
+      res.end();
+    });
 
     let streamedContent = "";
 
@@ -82,17 +94,23 @@ export async function chatMessage(req: Request, res: Response): Promise<void> {
       message,
       sessionId,
       (chunk) => {
-        streamedContent += chunk;
-        res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+        if (!clientDisconnected) {
+          streamedContent += chunk;
+          res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+        }
       }
     );
+
+    if (clientDisconnected) return;
 
     const sid = session._id?.toString() ?? sessionId ?? "";
     res.write(`data: ${JSON.stringify({ type: "done", sessionId: sid, followUps })}\n\n`);
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Failed to process chat" })}\n\n`);
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Failed to process chat" })}\n\n`);
+      res.end();
+    }
   }
 }
 
