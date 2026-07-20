@@ -1,11 +1,9 @@
-import { SymptomAnalysisModel, ISymptomAnalysis, IAiSymptomAnalysis } from "../models/SymptomAnalysis.model.js";
-import { ReportAnalysisModel, IReportAnalysis } from "../models/ReportAnalysis.model.js";
-import { ChatSessionModel, IChatSession } from "../models/ChatSession.model.js";
-import { MedicineModel } from "../models/Medicine.model.js";
-import { HealthConditionModel } from "../models/HealthCondition.model.js";
-import { HealthRecordModel } from "../models/HealthRecord.model.js";
+import { ObjectId } from "mongodb";
+import { symptomAnalysesCol, reportAnalysesCol, chatSessionsCol, medicinesCol, conditionsCol, healthRecordsCol, toObjectId } from "../db/collections.js";
+import type { ISymptomAnalysis, IAiSymptomAnalysis, IReportAnalysis, IChatSession, PaginatedResult } from "../types/models.js";
 import { generateWithPro, generateWithFlash, streamChat, analyzeImageWithVision } from "./gemini.service.js";
 import { analyzeWithGroq } from "./groq.service.js";
+import { paginate } from "../utils/pagination.js";
 
 interface HistoryQuery {
   page: number;
@@ -13,26 +11,11 @@ interface HistoryQuery {
   type?: "symptom" | "report";
 }
 
-interface PaginatedResult {
-  data: Record<string, unknown>[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
 const MEDICAL_DISCLAIMER =
   "⚠️ This analysis is for educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider for medical decisions. In case of emergency, contact emergency services immediately.";
 
 function buildSymptomPrompt(
-  symptoms: string[],
-  duration?: string,
-  severity?: string,
-  additionalInfo?: string
+  symptoms: string[], duration?: string, severity?: string, additionalInfo?: string
 ): string {
   return `You are MediMind's medical AI assistant. Analyze the following symptoms and provide a structured medical assessment.
 
@@ -57,14 +40,7 @@ Respond in this exact JSON format (no markdown, no code fences, no extra text):
 }`;
 }
 
-function buildBlogPrompt(
-  topic: string,
-  audience?: string,
-  tone?: string,
-  length?: string,
-  keyPoints?: string[],
-  includeSections?: string[]
-): string {
+function buildBlogPrompt(topic: string, audience?: string, tone?: string, length?: string, keyPoints?: string[], includeSections?: string[]): string {
   return `Generate a comprehensive health article about "${topic}" for ${audience ?? "general public"}.
 Tone: ${tone ?? "informative"}
 Length: approximately ${length ?? "1000"} words
@@ -90,12 +66,7 @@ Format the output as JSON (no markdown, no code fences):
 }`;
 }
 
-function buildRecommendationPrompt(
-  userId: string,
-  symptoms?: string[],
-  conditions?: string[],
-  healthGoals?: string[]
-): string {
+function buildRecommendationPrompt(symptoms?: string[], conditions?: string[], healthGoals?: string[]): string {
   return `Based on this user's context, provide personalized medicine and supplement recommendations.
 
 User Context:
@@ -183,6 +154,15 @@ Format as JSON array of strings (no markdown, no code fences):
 ["question 1", "question 2", "question 3"]`;
 }
 
+function parseJson<T>(raw: string, fallback: T): T {
+  try {
+    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(cleaned) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 // ─── Symptom Analysis ───────────────────────────────────────────
 
 export async function analyzeSymptoms(
@@ -193,33 +173,49 @@ export async function analyzeSymptoms(
   additionalInfo?: string
 ): Promise<ISymptomAnalysis> {
   const prompt = buildSymptomPrompt(symptoms, duration, severity, additionalInfo);
-
   let aiAnalysis: IAiSymptomAnalysis;
-  let assessmentResult: string;
 
   try {
     const raw = await analyzeWithGroq(prompt);
-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    aiAnalysis = JSON.parse(cleaned) as IAiSymptomAnalysis;
-    assessmentResult = `Analysis complete. ${aiAnalysis.possibleConditions.length} possible condition(s) identified. Urgency: ${aiAnalysis.urgencyLevel}.`;
+    aiAnalysis = parseJson(raw, {
+      urgencyLevel: "routine",
+      urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
+      possibleConditions: [],
+      recommendations: ["Monitor symptoms and consult a doctor if they persist."],
+      warningSignsToWatch: [],
+      shouldSeeDoctor: false,
+      disclaimer: MEDICAL_DISCLAIMER,
+    });
   } catch {
+    console.error("Groq analysis failed, falling back to Gemini Flash");
     const raw = await generateWithFlash(prompt);
-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    aiAnalysis = JSON.parse(cleaned) as IAiSymptomAnalysis;
-    assessmentResult = `Analysis complete. ${aiAnalysis.possibleConditions.length} possible condition(s) identified. Urgency: ${aiAnalysis.urgencyLevel}.`;
+    aiAnalysis = parseJson(raw, {
+      urgencyLevel: "routine",
+      urgencyExplanation: "AI analysis encountered an issue; please consult a healthcare professional.",
+      possibleConditions: [],
+      recommendations: ["Monitor symptoms and consult a doctor if they persist."],
+      warningSignsToWatch: [],
+      shouldSeeDoctor: false,
+      disclaimer: MEDICAL_DISCLAIMER,
+    });
   }
 
-  return SymptomAnalysisModel.create({
-    patientId,
+  const doc: ISymptomAnalysis = {
+    patientId: toObjectId(patientId),
     reportedSymptoms: symptoms,
     duration,
     severity,
     additionalInfo,
     aiAnalysis: { ...aiAnalysis, disclaimer: MEDICAL_DISCLAIMER },
-    AI_Assessment_Result: assessmentResult,
+    AI_Assessment_Result: `Analysis complete. ${aiAnalysis.possibleConditions.length} possible condition(s) identified. Urgency: ${aiAnalysis.urgencyLevel}.`,
     recommendedAction: aiAnalysis.recommendations[0] ?? "Monitor symptoms and consult a doctor if they persist.",
     timestamp: new Date(),
-  });
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const result = await symptomAnalysesCol().insertOne(doc);
+  return { ...doc, _id: result.insertedId };
 }
 
 // ─── Report Analysis (Vision) ────────────────────────────────────
@@ -256,9 +252,9 @@ Format as JSON (no markdown, no code fences):
 
   try {
     const raw = await analyzeImageWithVision(uploadedImageUrl, visionPrompt);
-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    aiOutput = JSON.parse(cleaned);
+    aiOutput = parseJson(raw, {} as Record<string, unknown>);
   } catch {
+    console.error("Vision analysis failed, using fallback");
     aiOutput = {
       reportType,
       parameters: [],
@@ -287,8 +283,9 @@ Format as JSON (no markdown, no code fences):
     }
   }
 
-  return ReportAnalysisModel.create({
-    patientId,
+  const now = new Date();
+  const doc: IReportAnalysis = {
+    patientId: toObjectId(patientId),
     reportName,
     reportType,
     uploadedImageUrl,
@@ -305,7 +302,12 @@ Format as JSON (no markdown, no code fences):
       normalValues,
       abnormalValues,
     },
-  });
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const result = await reportAnalysesCol().insertOne(doc);
+  return { ...doc, _id: result.insertedId };
 }
 
 // ─── Chat Message (Streaming) ────────────────────────────────────
@@ -316,32 +318,31 @@ export async function chatMessage(
   sessionId?: string,
   onChunk?: (text: string) => void
 ): Promise<{ session: IChatSession; followUps: string[] }> {
+  const userOid = toObjectId(userId);
   let session: IChatSession | null = null;
 
   if (sessionId) {
-    session = await ChatSessionModel.findById(sessionId);
+    session = await chatSessionsCol().findOne({ _id: toObjectId(sessionId) });
   }
 
   if (!session) {
-    session = await ChatSessionModel.create({
-      participants: [userId],
+    const now = new Date();
+    const newDoc: IChatSession = {
+      participants: [userOid],
       messages: [],
       status: "Active",
       sessionTitle: message.slice(0, 60),
-    });
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await chatSessionsCol().insertOne(newDoc);
+    session = { ...newDoc, _id: result.insertedId };
   }
 
-  const history = session.messages.slice(-20).map((m) => ({
+  const history = (session.messages || []).slice(-20).map((m) => ({
     role: (m.senderId.toString() === userId ? "user" : "model") as "user" | "model",
     content: m.content,
   }));
-
-  const now = new Date();
-  session.messages.push({
-    senderId: userId as any,
-    content: message,
-    timestamp: now,
-  });
 
   const chatMessages = [...history, { role: "user" as const, content: message }];
   let fullResponse = "";
@@ -351,16 +352,10 @@ export async function chatMessage(
       onChunk?.(chunk);
     });
   } catch {
+    console.error("Chat streaming failed");
     fullResponse = `${MEDICAL_DISCLAIMER}\n\nI apologize, but I'm having trouble processing your request. Please try again or consult a healthcare professional for immediate concerns.`;
     onChunk?.(fullResponse);
   }
-
-  const assistantNow = new Date();
-  session.messages.push({
-    senderId: userId as any,
-    content: fullResponse,
-    timestamp: assistantNow,
-  });
 
   let followUps: string[] = [];
   try {
@@ -369,12 +364,13 @@ export async function chatMessage(
       fullResponse
     );
     const followRaw = await generateWithFlash(followPrompt);
-    const cleaned = followRaw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    followUps = JSON.parse(cleaned) as string[];
-
-    const lastMsgIdx = session.messages.length - 1;
-    session.messages[lastMsgIdx].suggestedFollowUps = followUps;
+    followUps = parseJson<string[]>(followRaw, [
+      "What are the common causes?",
+      "When should I see a doctor?",
+      "Are there any home remedies?",
+    ]);
   } catch {
+    console.error("Follow-up generation failed");
     followUps = [
       "What are the common causes?",
       "When should I see a doctor?",
@@ -382,9 +378,20 @@ export async function chatMessage(
     ];
   }
 
-  await session.save();
+  const now = new Date();
+  const userMessage = { senderId: userOid, content: message, timestamp: now };
+  const assistantMessage = { senderId: "ai-assistant", content: fullResponse, timestamp: now, suggestedFollowUps: followUps };
 
-  return { session, followUps };
+  await chatSessionsCol().updateOne(
+    { _id: session._id },
+    {
+      $push: { messages: { $each: [userMessage, assistantMessage] } },
+      $set: { updatedAt: now },
+    }
+  );
+
+  const updatedSession = await chatSessionsCol().findOne({ _id: session._id });
+  return { session: updatedSession ?? session, followUps };
 }
 
 // ─── Blog Generation ─────────────────────────────────────────────
@@ -398,57 +405,43 @@ export async function generateBlog(
   includeSections?: string[]
 ): Promise<Record<string, unknown>> {
   const prompt = buildBlogPrompt(topic, audience, tone, length, keyPoints, includeSections);
-
   const raw = await generateWithPro(prompt);
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    return {
-      title: topic,
-      metaDescription: `A comprehensive article about ${topic}`,
-      tags: ["health", topic.toLowerCase().replace(/\s+/g, "-")],
-      readTime: 5,
-      content: raw,
-      keyTakeaways: ["Consult a healthcare professional for personalized advice."],
-    };
-  }
+  return parseJson(raw, {
+    title: topic,
+    metaDescription: `A comprehensive article about ${topic}`,
+    tags: ["health", topic.toLowerCase().replace(/\s+/g, "-")],
+    readTime: 5,
+    content: raw,
+    keyTakeaways: ["Consult a healthcare professional for personalized advice."],
+  });
 }
 
 // ─── Medicine Recommendations ────────────────────────────────────
 
 export async function getRecommendations(
-  userId: string,
+  _userId: string,
   symptoms?: string[],
   conditions?: string[],
   healthGoals?: string[]
 ): Promise<Record<string, unknown>> {
-  const prompt = buildRecommendationPrompt(userId, symptoms, conditions, healthGoals);
-
+  const prompt = buildRecommendationPrompt(symptoms, conditions, healthGoals);
   const raw = await generateWithPro(prompt);
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    return {
-      recommendations: [],
-      itemsToAvoid: [],
-      lifestyleTips: ["Maintain a balanced diet", "Exercise regularly", "Stay hydrated"],
-      monitoringSuggestions: ["Track your symptoms", "Monitor vital signs regularly"],
-      disclaimer: MEDICAL_DISCLAIMER,
-    };
-  }
+  return parseJson(raw, {
+    recommendations: [],
+    itemsToAvoid: [],
+    lifestyleTips: ["Maintain a balanced diet", "Exercise regularly", "Stay hydrated"],
+    monitoringSuggestions: ["Track your symptoms", "Monitor vital signs regularly"],
+    disclaimer: MEDICAL_DISCLAIMER,
+  });
 }
 
 // ─── Health Insights ─────────────────────────────────────────────
 
 export async function getHealthInsights(userId: string): Promise<Record<string, unknown>> {
-  const records = await HealthRecordModel.find({ patientId: userId })
+  const records = await healthRecordsCol().find({ patientId: toObjectId(userId) })
     .sort({ createdAt: -1 })
     .limit(10)
-    .lean();
+    .toArray();
 
   if (!records || records.length === 0) {
     return {
@@ -463,118 +456,82 @@ export async function getHealthInsights(userId: string): Promise<Record<string, 
   }
 
   const prompt = buildHealthInsightsPrompt(records as unknown as Record<string, unknown>[]);
-
   const raw = await generateWithPro(prompt);
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    return {
-      trends: [],
-      notableChanges: [`${records.length} health records analyzed`],
-      recommendations: ["Continue monitoring your health metrics regularly."],
-      areasNeedingAttention: [],
-      positiveProgress: ["Health records being tracked consistently"],
-      overallAssessment: `Analysis of ${records.length} health records completed.`,
-      disclaimer: MEDICAL_DISCLAIMER,
-    };
-  }
+  return parseJson(raw, {
+    trends: [],
+    notableChanges: [`${records.length} health records analyzed`],
+    recommendations: ["Continue monitoring your health metrics regularly."],
+    areasNeedingAttention: [],
+    positiveProgress: ["Health records being tracked consistently"],
+    overallAssessment: `Analysis of ${records.length} health records completed.`,
+    disclaimer: MEDICAL_DISCLAIMER,
+  });
 }
 
 // ─── Classify Tags ───────────────────────────────────────────────
 
-export async function classifyTags(
-  title: string,
-  description: string
-): Promise<Record<string, unknown>> {
+export async function classifyTags(title: string, description: string): Promise<Record<string, unknown>> {
   const prompt = buildClassifyTagsPrompt(title, description);
-
   const raw = await generateWithFlash(prompt);
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    return {
-      tags: title
-        .toLowerCase()
-        .replace(/[^\w\s]/g, "")
-        .split(/\s+/)
-        .filter((w) => w.length > 3)
-        .slice(0, 5),
-      category: "General",
-    };
-  }
+  return parseJson(raw, {
+    tags: title
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 5),
+    category: "General",
+  });
 }
 
-// ─── History (unchanged logic, enhanced for new fields) ──────────
+// ─── History ─────────────────────────────────────────────────────
 
-export async function getHistory(
-  patientId: string,
-  opts: HistoryQuery
-): Promise<PaginatedResult> {
+export async function getHistory(patientId: string, opts: HistoryQuery): Promise<PaginatedResult<Record<string, unknown>>> {
   const symptomFilter = { patientId };
   const reportFilter = { patientId };
 
   if (opts.type === "symptom") {
-    const total = await SymptomAnalysisModel.countDocuments(symptomFilter);
-    const totalPages = Math.ceil(total / opts.limit) || 1;
-    const data = (await SymptomAnalysisModel.find(symptomFilter)
+    const col = symptomAnalysesCol();
+    const total = await col.countDocuments(symptomFilter);
+    const { pagination } = await paginate(total, opts);
+    const data = await col.find(symptomFilter)
       .sort({ timestamp: -1 })
       .skip((opts.page - 1) * opts.limit)
       .limit(opts.limit)
-      .lean()) as unknown as Record<string, unknown>[];
-    return {
-      data,
-      pagination: {
-        page: opts.page,
-        limit: opts.limit,
-        total,
-        totalPages,
-        hasNextPage: opts.page < totalPages,
-        hasPrevPage: opts.page > 1,
-      },
-    };
+      .toArray() as unknown as Record<string, unknown>[];
+    return { data, pagination };
   }
 
   if (opts.type === "report") {
-    const total = await ReportAnalysisModel.countDocuments(reportFilter);
-    const totalPages = Math.ceil(total / opts.limit) || 1;
-    const data = (await ReportAnalysisModel.find(reportFilter)
+    const col = reportAnalysesCol();
+    const total = await col.countDocuments(reportFilter);
+    const { pagination } = await paginate(total, opts);
+    const data = await col.find(reportFilter)
       .sort({ createdAt: -1 })
       .skip((opts.page - 1) * opts.limit)
       .limit(opts.limit)
-      .lean()) as unknown as Record<string, unknown>[];
-    return {
-      data,
-      pagination: {
-        page: opts.page,
-        limit: opts.limit,
-        total,
-        totalPages,
-        hasNextPage: opts.page < totalPages,
-        hasPrevPage: opts.page > 1,
-      },
-    };
+      .toArray() as unknown as Record<string, unknown>[];
+    return { data, pagination };
   }
 
+  // Merged query — fetch all items, merge and paginate in memory
   const [symptomTotal, reportTotal] = await Promise.all([
-    SymptomAnalysisModel.countDocuments(symptomFilter),
-    ReportAnalysisModel.countDocuments(reportFilter),
+    symptomAnalysesCol().countDocuments(symptomFilter),
+    reportAnalysesCol().countDocuments(reportFilter),
   ]);
   const total = symptomTotal + reportTotal;
   const totalPages = Math.ceil(total / opts.limit) || 1;
 
+  const MAX_FETCH = 1000;
   const [symptoms, reports] = await Promise.all([
-    SymptomAnalysisModel.find(symptomFilter)
+    symptomAnalysesCol().find(symptomFilter)
       .sort({ timestamp: -1 })
-      .limit(opts.limit)
-      .lean(),
-    ReportAnalysisModel.find(reportFilter)
+      .limit(MAX_FETCH)
+      .toArray(),
+    reportAnalysesCol().find(reportFilter)
       .sort({ createdAt: -1 })
-      .limit(opts.limit)
-      .lean(),
+      .limit(MAX_FETCH)
+      .toArray(),
   ]);
 
   const merged = [

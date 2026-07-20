@@ -87,7 +87,8 @@ export async function chatMessage(req: Request, res: Response): Promise<void> {
       }
     );
 
-    res.write(`data: ${JSON.stringify({ type: "done", sessionId: session._id.toString(), followUps })}\n\n`);
+    const sid = session._id?.toString() ?? sessionId ?? "";
+    res.write(`data: ${JSON.stringify({ type: "done", sessionId: sid, followUps })}\n\n`);
     res.end();
   } catch (err) {
     res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Failed to process chat" })}\n\n`);

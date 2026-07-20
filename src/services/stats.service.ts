@@ -1,24 +1,5 @@
-import { UserModel } from "../models/User.model.js";
-import { MedicineModel } from "../models/Medicine.model.js";
-import { DoctorModel } from "../models/Doctor.model.js";
-import { ReviewModel } from "../models/Review.model.js";
-import { BlogModel } from "../models/Blog.model.js";
-import { HealthConditionModel } from "../models/HealthCondition.model.js";
-import { ChatSessionModel } from "../models/ChatSession.model.js";
-import { ReportAnalysisModel } from "../models/ReportAnalysis.model.js";
-import { SymptomAnalysisModel } from "../models/SymptomAnalysis.model.js";
-
-export interface DashboardStats {
-  users: { total: number; patients: number; doctors: number; admins: number; newThisMonth: number };
-  medicines: { total: number; prescriptionRequired: number; lowStock: number };
-  doctors: { total: number; verified: number; unverified: number };
-  reviews: { total: number; pendingApproval: number; averageRating: number };
-  blogs: { total: number; published: number; drafts: number };
-  conditions: { total: number };
-  chatSessions: { total: number; active: number; closed: number };
-  reportAnalyses: { total: number };
-  symptomAnalyses: { total: number };
-}
+import { usersCol, medicinesCol, doctorsCol, reviewsCol, blogsCol, conditionsCol, chatSessionsCol, reportAnalysesCol, symptomAnalysesCol } from "../db/collections.js";
+import type { DashboardStats } from "../types/models.js";
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const thirtyDaysAgo = new Date();
@@ -47,30 +28,30 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     totalReports,
     totalSymptoms,
   ] = await Promise.all([
-    UserModel.countDocuments(),
-    UserModel.countDocuments({ role: "user" }),
-    UserModel.countDocuments({ role: "doctor" }),
-    UserModel.countDocuments({ role: "admin" }),
-    UserModel.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
-    MedicineModel.countDocuments(),
-    MedicineModel.countDocuments({ isPrescriptionRequired: true }),
-    MedicineModel.countDocuments({ stockQuantity: { $lte: 10, $gte: 0 } }),
-    DoctorModel.countDocuments(),
-    DoctorModel.countDocuments({ isVerified: true }),
-    ReviewModel.countDocuments(),
-    ReviewModel.countDocuments({ isApproved: false }),
-    ReviewModel.aggregate([
+    usersCol().countDocuments(),
+    usersCol().countDocuments({ role: "user" }),
+    usersCol().countDocuments({ role: "doctor" }),
+    usersCol().countDocuments({ role: "admin" }),
+    usersCol().countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+    medicinesCol().countDocuments(),
+    medicinesCol().countDocuments({ isPrescriptionRequired: true }),
+    medicinesCol().countDocuments({ stockQuantity: { $lte: 10, $gte: 0 } }),
+    doctorsCol().countDocuments(),
+    doctorsCol().countDocuments({ isVerified: true }),
+    reviewsCol().countDocuments(),
+    reviewsCol().countDocuments({ isApproved: false }),
+    reviewsCol().aggregate([
       { $match: { isApproved: true } },
       { $group: { _id: null, avgRating: { $avg: "$rating" } } },
-    ]),
-    BlogModel.countDocuments(),
-    BlogModel.countDocuments({ status: "Published" }),
-    BlogModel.countDocuments({ status: "Draft" }),
-    HealthConditionModel.countDocuments(),
-    ChatSessionModel.countDocuments(),
-    ChatSessionModel.countDocuments({ status: "Active" }),
-    ReportAnalysisModel.countDocuments(),
-    SymptomAnalysisModel.countDocuments(),
+    ]).toArray(),
+    blogsCol().countDocuments(),
+    blogsCol().countDocuments({ status: "Published" }),
+    blogsCol().countDocuments({ status: "Draft" }),
+    conditionsCol().countDocuments(),
+    chatSessionsCol().countDocuments(),
+    chatSessionsCol().countDocuments({ status: "Active" }),
+    reportAnalysesCol().countDocuments(),
+    symptomAnalysesCol().countDocuments(),
   ]);
 
   const averageRating = avgRatingResult.length > 0
@@ -78,39 +59,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     : 0;
 
   return {
-    users: {
-      total: totalUsers,
-      patients,
-      doctors,
-      admins,
-      newThisMonth: newUsers,
-    },
-    medicines: {
-      total: totalMedicines,
-      prescriptionRequired: prescriptionMeds,
-      lowStock: lowStockMeds,
-    },
-    doctors: {
-      total: totalDoctors,
-      verified: verifiedDoctors,
-      unverified: totalDoctors - verifiedDoctors,
-    },
-    reviews: {
-      total: totalReviews,
-      pendingApproval: pendingReviews,
-      averageRating,
-    },
-    blogs: {
-      total: totalBlogs,
-      published: publishedBlogs,
-      drafts: draftBlogs,
-    },
+    users: { total: totalUsers, patients, doctors, admins, newThisMonth: newUsers },
+    medicines: { total: totalMedicines, prescriptionRequired: prescriptionMeds, lowStock: lowStockMeds },
+    doctors: { total: totalDoctors, verified: verifiedDoctors, unverified: totalDoctors - verifiedDoctors },
+    reviews: { total: totalReviews, pendingApproval: pendingReviews, averageRating },
+    blogs: { total: totalBlogs, published: publishedBlogs, drafts: draftBlogs },
     conditions: { total: totalConditions },
-    chatSessions: {
-      total: totalChats,
-      active: activeChats,
-      closed: totalChats - activeChats,
-    },
+    chatSessions: { total: totalChats, active: activeChats, closed: totalChats - activeChats },
     reportAnalyses: { total: totalReports },
     symptomAnalyses: { total: totalSymptoms },
   };

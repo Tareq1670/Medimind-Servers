@@ -4,7 +4,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { connectDB, getDB } from "./config/db.js";
-import { connectMongoose } from "./config/mongoose.js";
 import { env } from "./config/env.js";
 import authRoutes from "./routes/auth.routes.js";
 import protectedRoutes from "./routes/protected.routes.js";
@@ -54,7 +53,6 @@ app.use(async (_req: Request, res: Response, next: NextFunction) => {
   if (dbConnected) return next();
   try {
     await connectDB();
-    await connectMongoose();
     dbConnected = true;
   } catch (err) {
     console.error("DB connection failed:", err);

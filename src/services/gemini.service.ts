@@ -59,7 +59,7 @@ export async function streamChat(
   const model = getFlashModel();
 
   const chat = model.startChat({
-    systemInstruction: { role: "user", parts: [{ text: systemPrompt }] },
+    systemInstruction: { role: "model", parts: [{ text: systemPrompt }] },
     history: messages.slice(0, -1).map((m) => ({
       role: m.role,
       parts: [{ text: m.content }],
@@ -89,10 +89,11 @@ export async function analyzeImageWithVision(
 
   const imageResp = await fetch(imageUrl);
   const imageBuffer = await imageResp.arrayBuffer();
+  const mimeType = imageResp.headers.get("content-type") ?? "image/jpeg";
   const base64Image = Buffer.from(imageBuffer).toString("base64");
 
   const result = await model.generateContent([
-    { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+    { inlineData: { mimeType, data: base64Image } },
     prompt,
   ]);
 

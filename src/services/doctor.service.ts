@@ -1,4 +1,7 @@
-import { DoctorModel, IDoctor } from "../models/Doctor.model.js";
+import { ObjectId } from "mongodb";
+import { doctorsCol, usersCol, toObjectId } from "../db/collections.js";
+import type { IDoctor, PaginatedResult } from "../types/models.js";
+import { paginate, andFilter, regexSearch } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
@@ -10,102 +13,105 @@ interface QueryOptions {
   verified?: string;
 }
 
-interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
-  const filter: Record<string, unknown> = {};
-  const andConditions: Record<string, unknown>[] = [];
+  const conditions: Record<string, unknown>[] = [];
 
   if (opts.search) {
-    andConditions.push({
-      $or: [
-        { specialty: { $regex: opts.search, $options: "i" } },
-        { bio: { $regex: opts.search, $options: "i" } },
-        { hospitalAffiliation: { $regex: opts.search, $options: "i" } },
-      ],
-    });
+    conditions.push(regexSearch(["specialty", "bio", "hospitalAffiliation"], opts.search));
   }
-
   if (opts.specialty) {
-    andConditions.push({ specialty: opts.specialty });
+    conditions.push({ specialty: opts.specialty });
   }
-
   if (opts.minFee !== undefined || opts.maxFee !== undefined) {
     const feeFilter: Record<string, unknown> = {};
     if (opts.minFee !== undefined) feeFilter.$gte = opts.minFee;
     if (opts.maxFee !== undefined) feeFilter.$lte = opts.maxFee;
-    andConditions.push({ consultationFee: feeFilter });
+    conditions.push({ consultationFee: feeFilter });
   }
-
   if (opts.verified === "true") {
-    andConditions.push({ isVerified: true });
+    conditions.push({ isVerified: true });
   } else if (opts.verified === "false") {
-    andConditions.push({ isVerified: false });
+    conditions.push({ isVerified: false });
   }
 
-  if (andConditions.length > 0) {
-    filter.$and = andConditions;
-  }
+  return andFilter(conditions);
+}
 
-  return filter;
+async function attachUserInfo<T extends { userId?: ObjectId | string }>(items: T[]): Promise<T[]> {
+  if (items.length === 0) return items;
+  const userIds = [...new Set(items.map((d) => d.userId?.toString()))].filter(Boolean);
+  const userDocs = await usersCol().find({ _id: { $in: userIds.map((id) => new ObjectId(id)) } }).toArray();
+  const userMap = new Map(userDocs.map((u) => [u._id!.toString(), { name: u.name, email: u.email, avatar: u.avatar }]));
+  return items.map((d) => ({
+    ...d,
+    user: d.userId ? userMap.get(d.userId.toString()) : undefined,
+  }));
 }
 
 export async function getAllDoctors(opts: QueryOptions): Promise<PaginatedResult<IDoctor>> {
   const filter = buildFilter(opts);
-  const total = await DoctorModel.countDocuments(filter);
-  const totalPages = Math.ceil(total / opts.limit) || 1;
-
-  const data = await DoctorModel.find(filter)
-    .populate("userId", "name email avatar")
+  const col = doctorsCol();
+  const total = await col.countDocuments(filter);
+  const { pagination } = await paginate(total, opts);
+  let data = await col.find(filter)
     .sort({ isVerified: -1, createdAt: -1 })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
-    .lean();
-
-  return {
-    data,
-    pagination: {
-      page: opts.page,
-      limit: opts.limit,
-      total,
-      totalPages,
-      hasNextPage: opts.page < totalPages,
-      hasPrevPage: opts.page > 1,
-    },
-  };
+    .toArray();
+  data = await attachUserInfo(data);
+  return { data, pagination };
 }
 
 export async function getDoctorById(id: string): Promise<IDoctor | null> {
-  return DoctorModel.findById(id).populate("userId", "name email avatar").lean();
+  const doc = await doctorsCol().findOne({ _id: toObjectId(id) });
+  if (doc) {
+    const attached = await attachUserInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
 export async function getDoctorByUserId(userId: string): Promise<IDoctor | null> {
-  return DoctorModel.findOne({ userId }).populate("userId", "name email avatar").lean();
+  const doc = await doctorsCol().findOne({ userId: toObjectId(userId) });
+  if (doc) {
+    const attached = await attachUserInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
-export async function createDoctor(data: Partial<IDoctor>): Promise<IDoctor> {
-  return DoctorModel.create(data);
+export async function createDoctor(data: Record<string, unknown>): Promise<IDoctor> {
+  const doc: IDoctor = {
+    userId: typeof data.userId === "string" ? toObjectId(data.userId as string) : data.userId as ObjectId,
+    specialty: data.specialty as string,
+    experienceYears: Number(data.experienceYears) || 0,
+    hospitalAffiliation: data.hospitalAffiliation as string,
+    bio: data.bio as string,
+    consultationFee: Number(data.consultationFee) || 0,
+    availabilitySlots: (data.availabilitySlots as IDoctor["availabilitySlots"]) || [],
+    isVerified: Boolean(data.isVerified),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const result = await doctorsCol().insertOne(doc);
+  return { ...doc, _id: result.insertedId };
 }
 
-export async function updateDoctor(
-  id: string,
-  data: Partial<IDoctor>
-): Promise<IDoctor | null> {
-  return DoctorModel.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true })
-    .populate("userId", "name email avatar")
-    .lean();
+export async function updateDoctor(id: string, data: Record<string, unknown>): Promise<IDoctor | null> {
+  const update: Record<string, unknown> = { $set: { ...data, updatedAt: new Date() } };
+  delete (update.$set as Record<string, unknown>)._id;
+  const doc = await doctorsCol().findOneAndUpdate(
+    { _id: toObjectId(id) },
+    update,
+    { returnDocument: "after" }
+  );
+  if (doc) {
+    const attached = await attachUserInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
 export async function deleteDoctor(id: string): Promise<IDoctor | null> {
-  return DoctorModel.findByIdAndDelete(id).lean();
+  return doctorsCol().findOneAndDelete({ _id: toObjectId(id) });
 }

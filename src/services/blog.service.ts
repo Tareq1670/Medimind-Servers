@@ -1,4 +1,7 @@
-import { BlogModel, IBlog } from "../models/Blog.model.js";
+import { ObjectId } from "mongodb";
+import { blogsCol, usersCol, toObjectId } from "../db/collections.js";
+import type { IBlog, PaginatedResult } from "../types/models.js";
+import { paginate, andFilter, regexSearch } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
@@ -9,103 +12,96 @@ interface QueryOptions {
   authorId?: string;
 }
 
-interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
-  const filter: Record<string, unknown> = {};
-  const andConditions: Record<string, unknown>[] = [];
+  const conditions: Record<string, unknown>[] = [];
 
   if (opts.search) {
-    andConditions.push({
-      $or: [
-        { title: { $regex: opts.search, $options: "i" } },
-        { content: { $regex: opts.search, $options: "i" } },
-      ],
-    });
+    conditions.push(regexSearch(["title", "content"], opts.search));
   }
-
   if (opts.tag) {
-    andConditions.push({ tags: opts.tag });
+    conditions.push({ tags: opts.tag });
   }
-
   if (opts.status) {
-    andConditions.push({ status: opts.status });
+    conditions.push({ status: opts.status });
   }
-
   if (opts.authorId) {
-    andConditions.push({ authorId: opts.authorId });
+    conditions.push({ authorId: toObjectId(opts.authorId) });
   }
 
-  if (andConditions.length > 0) {
-    filter.$and = andConditions;
-  }
+  return andFilter(conditions);
+}
 
-  return filter;
+async function attachAuthorInfo<T extends { authorId?: ObjectId | string }>(items: T[]): Promise<T[]> {
+  if (items.length === 0) return items;
+  const authorIds = [...new Set(items.map((b) => b.authorId?.toString()))].filter(Boolean);
+  const userDocs = await usersCol().find({ _id: { $in: authorIds.map((id) => new ObjectId(id)) } }).toArray();
+  const userMap = new Map(userDocs.map((u) => [u._id!.toString(), { name: u.name, email: u.email, avatar: u.avatar }]));
+  return items.map((d) => ({
+    ...d,
+    author: d.authorId ? userMap.get(d.authorId.toString()) : undefined,
+  }));
 }
 
 export async function getAllBlogs(opts: QueryOptions): Promise<PaginatedResult<IBlog>> {
   const filter = buildFilter(opts);
-  const total = await BlogModel.countDocuments(filter);
-  const totalPages = Math.ceil(total / opts.limit) || 1;
-
-  const data = await BlogModel.find(filter)
-    .populate("authorId", "name email avatar")
+  const col = blogsCol();
+  const total = await col.countDocuments(filter);
+  const { pagination } = await paginate(total, opts);
+  let data = await col.find(filter)
     .sort({ createdAt: -1 })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
-    .lean();
-
-  return {
-    data,
-    pagination: {
-      page: opts.page,
-      limit: opts.limit,
-      total,
-      totalPages,
-      hasNextPage: opts.page < totalPages,
-      hasPrevPage: opts.page > 1,
-    },
-  };
+    .toArray();
+  data = await attachAuthorInfo(data);
+  return { data, pagination };
 }
 
 export async function getBlogByIdInternal(id: string): Promise<IBlog | null> {
-  return BlogModel.findById(id).lean();
+  return blogsCol().findOne({ _id: toObjectId(id) });
 }
 
 export async function getBlogById(id: string): Promise<IBlog | null> {
-  const blog = await BlogModel.findByIdAndUpdate(
-    id,
-    { $inc: { viewCount: 1 } },
-    { new: true }
-  )
-    .populate("authorId", "name email avatar")
-    .lean();
-  return blog;
+  const col = blogsCol();
+  await col.updateOne({ _id: toObjectId(id) }, { $inc: { viewCount: 1 } });
+  const doc = await col.findOne({ _id: toObjectId(id) });
+  if (doc) {
+    const attached = await attachAuthorInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
-export async function createBlog(data: Partial<IBlog>): Promise<IBlog> {
-  return BlogModel.create(data);
+export async function createBlog(data: Record<string, unknown>): Promise<IBlog> {
+  const doc: IBlog = {
+    title: data.title as string,
+    content: data.content as string,
+    authorId: typeof data.authorId === "string" ? toObjectId(data.authorId as string) : data.authorId as ObjectId,
+    tags: (data.tags as string[]) || [],
+    coverImage: data.coverImage as string | undefined,
+    status: (data.status as IBlog["status"]) || "Draft",
+    viewCount: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const result = await blogsCol().insertOne(doc);
+  return { ...doc, _id: result.insertedId };
 }
 
-export async function updateBlog(
-  id: string,
-  data: Partial<IBlog>
-): Promise<IBlog | null> {
-  return BlogModel.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true })
-    .populate("authorId", "name email avatar")
-    .lean();
+export async function updateBlog(id: string, data: Record<string, unknown>): Promise<IBlog | null> {
+  const update: Record<string, unknown> = { $set: { ...data, updatedAt: new Date() } };
+  delete (update.$set as Record<string, unknown>)._id;
+  const doc = await blogsCol().findOneAndUpdate(
+    { _id: toObjectId(id) },
+    update,
+    { returnDocument: "after" }
+  );
+  if (doc) {
+    const attached = await attachAuthorInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
 export async function deleteBlog(id: string): Promise<IBlog | null> {
-  return BlogModel.findByIdAndDelete(id).lean();
+  return blogsCol().findOneAndDelete({ _id: toObjectId(id) });
 }

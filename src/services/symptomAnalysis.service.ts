@@ -1,4 +1,7 @@
-import { SymptomAnalysisModel, ISymptomAnalysis } from "../models/SymptomAnalysis.model.js";
+import { ObjectId } from "mongodb";
+import { symptomAnalysesCol, usersCol, toObjectId } from "../db/collections.js";
+import type { ISymptomAnalysis, PaginatedResult } from "../types/models.js";
+import { paginate } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
@@ -6,73 +9,74 @@ interface QueryOptions {
   patientId?: string;
 }
 
-interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-function buildFilter(opts: QueryOptions): Record<string, unknown> {
-  const filter: Record<string, unknown> = {};
-  if (opts.patientId) {
-    filter.patientId = opts.patientId;
-  }
-  return filter;
+async function attachPatientInfo<T extends { patientId?: ObjectId | string }>(items: T[]): Promise<T[]> {
+  if (items.length === 0) return items;
+  const ids = [...new Set(items.map((s) => s.patientId?.toString()))].filter(Boolean);
+  if (ids.length === 0) return items;
+  const userDocs = await usersCol().find({ _id: { $in: ids.map((id) => new ObjectId(id)) } }).toArray();
+  const userMap = new Map(userDocs.map((u) => [u._id!.toString(), { name: u.name, email: u.email }]));
+  return items.map((d) => ({
+    ...d,
+    patient: d.patientId ? userMap.get(d.patientId.toString()) : undefined,
+  }));
 }
 
 export async function getAllAnalyses(
   opts: QueryOptions & { userId?: string; isAdmin?: boolean }
 ): Promise<PaginatedResult<ISymptomAnalysis>> {
-  const filter = buildFilter(opts);
+  const filter: Record<string, unknown> = {};
+  if (opts.patientId) filter.patientId = opts.patientId;
+  if (!opts.isAdmin && opts.userId) filter.patientId = opts.userId;
 
-  if (!opts.isAdmin && opts.userId) {
-    const userFilter = { ...filter, patientId: opts.userId };
-    const total = await SymptomAnalysisModel.countDocuments(userFilter);
-    const totalPages = Math.ceil(total / opts.limit) || 1;
-    const data = await SymptomAnalysisModel.find(userFilter)
-      .populate("patientId", "name email")
-      .sort({ timestamp: -1 })
-      .skip((opts.page - 1) * opts.limit)
-      .limit(opts.limit)
-      .lean();
-    return {
-      data,
-      pagination: { page: opts.page, limit: opts.limit, total, totalPages, hasNextPage: opts.page < totalPages, hasPrevPage: opts.page > 1 },
-    };
-  }
-
-  const total = await SymptomAnalysisModel.countDocuments(filter);
-  const totalPages = Math.ceil(total / opts.limit) || 1;
-  const data = await SymptomAnalysisModel.find(filter)
-    .populate("patientId", "name email")
+  const col = symptomAnalysesCol();
+  const total = await col.countDocuments(filter);
+  const { pagination } = await paginate(total, opts);
+  let data = await col.find(filter)
     .sort({ timestamp: -1 })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
-    .lean();
-  return { data, pagination: { page: opts.page, limit: opts.limit, total, totalPages, hasNextPage: opts.page < totalPages, hasPrevPage: opts.page > 1 } };
+    .toArray();
+  data = await attachPatientInfo(data);
+  return { data, pagination };
 }
 
 export async function getAnalysisById(id: string): Promise<ISymptomAnalysis | null> {
-  return SymptomAnalysisModel.findById(id).populate("patientId", "name email").lean();
+  const doc = await symptomAnalysesCol().findOne({ _id: toObjectId(id) });
+  if (doc) {
+    const attached = await attachPatientInfo([doc]);
+    return attached[0];
+  }
+  return null;
 }
 
-export async function createAnalysis(data: Partial<ISymptomAnalysis>): Promise<ISymptomAnalysis> {
-  return SymptomAnalysisModel.create(data);
+export async function createAnalysis(data: Record<string, unknown>): Promise<ISymptomAnalysis> {
+  const doc: ISymptomAnalysis = {
+    patientId: toObjectId(data.patientId as string),
+    reportedSymptoms: (data.reportedSymptoms as string[]) || [],
+    duration: data.duration as string | undefined,
+    severity: data.severity as string | undefined,
+    additionalInfo: data.additionalInfo as string | undefined,
+    aiAnalysis: data.aiAnalysis as ISymptomAnalysis["aiAnalysis"],
+    AI_Assessment_Result: data.AI_Assessment_Result as string | undefined,
+    recommendedAction: data.recommendedAction as string | undefined,
+    timestamp: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const result = await symptomAnalysesCol().insertOne(doc);
+  return { ...doc, _id: result.insertedId };
 }
 
-export async function updateAnalysis(
-  id: string,
-  data: Partial<ISymptomAnalysis>
-): Promise<ISymptomAnalysis | null> {
-  return SymptomAnalysisModel.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true }).lean();
+export async function updateAnalysis(id: string, data: Record<string, unknown>): Promise<ISymptomAnalysis | null> {
+  const update: Record<string, unknown> = { $set: { ...data, updatedAt: new Date() } };
+  delete (update.$set as Record<string, unknown>)._id;
+  return symptomAnalysesCol().findOneAndUpdate(
+    { _id: toObjectId(id) },
+    update,
+    { returnDocument: "after" }
+  );
 }
 
 export async function deleteAnalysis(id: string): Promise<ISymptomAnalysis | null> {
-  return SymptomAnalysisModel.findByIdAndDelete(id).lean();
+  return symptomAnalysesCol().findOneAndDelete({ _id: toObjectId(id) });
 }

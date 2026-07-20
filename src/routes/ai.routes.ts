@@ -2,6 +2,7 @@ import { Router } from "express";
 import { verifyToken } from "../middleware/auth.middleware.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { upload } from "../middleware/upload.js";
+import { aiRateLimiter } from "../middleware/rateLimiter.js";
 import {
   symptomAnalysisSchema,
   reportAnalysisSchema,
@@ -15,6 +16,8 @@ import {
 import * as aiController from "../controllers/ai.controller.js";
 
 const router = Router();
+
+router.use(aiRateLimiter);
 
 router.post(
   "/symptom-analysis",

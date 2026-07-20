@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { MongoClient, ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import { env } from "../src/config/env.js";
@@ -7,20 +6,14 @@ const MONGODB_URI = env.mongodbUri;
 const DB_NAME = env.dbName;
 
 let nativeClient: MongoClient;
-let mongooseConnected = false;
 
 async function connect() {
   nativeClient = new MongoClient(MONGODB_URI);
   await nativeClient.connect();
-  console.log("Connected to MongoDB (native driver)");
-
-  await mongoose.connect(MONGODB_URI, { dbName: DB_NAME });
-  mongooseConnected = true;
-  console.log("Connected to MongoDB (Mongoose)");
+  console.log("Connected to MongoDB");
 }
 
 async function disconnect() {
-  if (mongooseConnected) await mongoose.disconnect();
   await nativeClient.close();
   console.log("Disconnected");
 }
