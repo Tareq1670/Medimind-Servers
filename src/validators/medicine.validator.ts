@@ -44,6 +44,8 @@ export const medicineQuerySchema = z.object({
     minPrice: z.coerce.number().min(0).optional(),
     maxPrice: z.coerce.number().min(0).optional(),
     prescription: z.enum(["true", "false"]).optional(),
+    sortBy: z.enum(["name", "price", "rating", "createdAt"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
   params: z.object({}).default({}),
 });

@@ -7,6 +7,8 @@ interface QueryOptions {
   limit: number;
   search?: string;
   severity?: "Low" | "Medium" | "High";
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -27,8 +29,17 @@ export async function getAllConditions(opts: QueryOptions): Promise<PaginatedRes
   const col = conditionsCol();
   const total = await col.countDocuments(filter);
   const { pagination } = await paginate(total, opts);
+
+  const allowedSorts: Record<string, 1 | -1> = {
+    title: 1,
+    severity: 1,
+    createdAt: 1,
+  };
+  const sortField = opts.sortBy && opts.sortBy in allowedSorts ? opts.sortBy : "title";
+  const sortDir = opts.sortOrder === "asc" ? 1 : -1;
+
   const data = await col.find(filter)
-    .sort({ severity: 1, title: 1 })
+    .sort({ [sortField]: sortDir })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
     .toArray();

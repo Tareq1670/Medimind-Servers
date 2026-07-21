@@ -10,6 +10,8 @@ interface QueryOptions {
   tag?: string;
   status?: "Draft" | "Published";
   authorId?: string;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -47,8 +49,17 @@ export async function getAllBlogs(opts: QueryOptions): Promise<PaginatedResult<I
   const col = blogsCol();
   const total = await col.countDocuments(filter);
   const { pagination } = await paginate(total, opts);
+
+  const allowedSorts: Record<string, 1 | -1> = {
+    title: 1,
+    createdAt: 1,
+    viewCount: 1,
+  };
+  const sortField = opts.sortBy && opts.sortBy in allowedSorts ? opts.sortBy : "createdAt";
+  const sortDir = opts.sortOrder === "asc" ? 1 : -1;
+
   let data = await col.find(filter)
-    .sort({ createdAt: -1 })
+    .sort({ [sortField]: sortDir })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
     .toArray();

@@ -35,6 +35,8 @@ export const blogQuerySchema = z.object({
     tag: z.string().optional(),
     status: z.enum(["Draft", "Published"]).optional(),
     authorId: z.string().optional(),
+    sortBy: z.enum(["title", "createdAt", "viewCount"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
   params: z.object({}).default({}),
 });

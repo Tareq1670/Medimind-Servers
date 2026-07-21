@@ -33,6 +33,8 @@ export const healthConditionQuerySchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(10),
     search: z.string().optional(),
     severity: z.enum(["Low", "Medium", "High"]).optional(),
+    sortBy: z.enum(["title", "severity", "createdAt"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
   params: z.object({}).default({}),
 });

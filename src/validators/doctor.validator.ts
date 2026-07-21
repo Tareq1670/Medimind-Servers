@@ -47,6 +47,9 @@ export const doctorQuerySchema = z.object({
     minFee: z.coerce.number().min(0).optional(),
     maxFee: z.coerce.number().min(0).optional(),
     verified: z.enum(["true", "false"]).optional(),
+    minRating: z.coerce.number().min(0).max(5).optional(),
+    sortBy: z.enum(["consultationFee", "experienceYears", "createdAt"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
   params: z.object({}).default({}),
 });

@@ -11,6 +11,9 @@ interface QueryOptions {
   minFee?: number;
   maxFee?: number;
   verified?: string;
+  minRating?: number;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -27,6 +30,9 @@ function buildFilter(opts: QueryOptions): Record<string, unknown> {
     if (opts.minFee !== undefined) feeFilter.$gte = opts.minFee;
     if (opts.maxFee !== undefined) feeFilter.$lte = opts.maxFee;
     conditions.push({ consultationFee: feeFilter });
+  }
+  if (opts.minRating !== undefined) {
+    conditions.push({ rating: { $gte: opts.minRating } });
   }
   if (opts.verified === "true") {
     conditions.push({ isVerified: true });
@@ -53,8 +59,17 @@ export async function getAllDoctors(opts: QueryOptions): Promise<PaginatedResult
   const col = doctorsCol();
   const total = await col.countDocuments(filter);
   const { pagination } = await paginate(total, opts);
+
+  const allowedSorts: Record<string, 1 | -1> = {
+    consultationFee: 1,
+    experienceYears: 1,
+    createdAt: 1,
+  };
+  const sortField = opts.sortBy && opts.sortBy in allowedSorts ? opts.sortBy : "createdAt";
+  const sortDir = opts.sortOrder === "asc" ? 1 : -1;
+
   let data = await col.find(filter)
-    .sort({ isVerified: -1, createdAt: -1 })
+    .sort({ [sortField]: sortDir, isVerified: -1 })
     .skip((opts.page - 1) * opts.limit)
     .limit(opts.limit)
     .toArray();
