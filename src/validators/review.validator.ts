@@ -31,6 +31,7 @@ export const reviewQuerySchema = z.object({
     targetType: z.enum(["Doctor", "Medicine"]).optional(),
     rating: z.coerce.number().int().min(1).max(5).optional(),
     approved: z.enum(["true", "false"]).optional(),
+    search: z.string().optional(),
   }),
   params: z.object({}).default({}),
 });

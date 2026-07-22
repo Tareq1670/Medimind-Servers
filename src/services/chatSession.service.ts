@@ -21,23 +21,38 @@ async function attachParticipants<T extends { participants?: (ObjectId | string)
   }));
 }
 
+const AI_ASSISTANT_SENDER = { name: "MediMind AI", email: "ai@medimind.app", avatar: null };
+
+function isValidObjectId(id: string): boolean {
+  return /^[0-9a-fA-F]{24}$/.test(id);
+}
+
 async function attachMessageSenderInfo<T extends { messages?: { senderId?: ObjectId | string }[] }>(items: T[]): Promise<T[]> {
   if (items.length === 0) return items;
-  const ids = [...new Set(items.flatMap((s) => (s.messages || []).map((m) => m.senderId?.toString()).filter(Boolean)))];
-  if (ids.length === 0) return items;
-  const userDocs = await usersCol().find({ _id: { $in: ids.map((id) => new ObjectId(id)) } }).toArray();
+  const allIds = [...new Set(items.flatMap((s) => (s.messages || []).map((m) => m.senderId?.toString()).filter(Boolean) as string[]))];
+  if (allIds.length === 0) return items;
+
+  const validIds = allIds.filter((id) => isValidObjectId(id));
+  const userDocs = validIds.length > 0
+    ? await usersCol().find({ _id: { $in: validIds.map((id) => new ObjectId(id)) } }).toArray()
+    : [];
   const userMap = new Map(userDocs.map((u) => [u._id!.toString(), { name: u.name, email: u.email, avatar: u.avatar }]));
+
   return items.map((d) => ({
     ...d,
-    messages: (d.messages || []).map((m) => ({
-      ...m,
-      sender: m.senderId ? userMap.get(m.senderId.toString()) : undefined,
-    })),
+    messages: (d.messages || []).map((m) => {
+      const senderIdStr = m.senderId?.toString();
+      if (senderIdStr === "ai-assistant") {
+        return { ...m, sender: AI_ASSISTANT_SENDER };
+      }
+      return { ...m, sender: senderIdStr ? userMap.get(senderIdStr) : undefined };
+    }),
   }));
 }
 
 export async function getAllSessions(userId: string, opts: QueryOptions): Promise<PaginatedResult<IChatSession>> {
-  const filter: Record<string, unknown> = { participants: userId };
+  const userOid = toObjectId(userId);
+  const filter: Record<string, unknown> = { participants: userOid };
   if (opts.status) filter.status = opts.status;
   const col = chatSessionsCol();
   const total = await col.countDocuments(filter);

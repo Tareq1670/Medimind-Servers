@@ -82,13 +82,35 @@ export async function getBlogById(id: string): Promise<IBlog | null> {
   return null;
 }
 
+export async function getBlogBySlug(slug: string): Promise<IBlog | null> {
+  const col = blogsCol();
+  await col.updateOne({ slug }, { $inc: { viewCount: 1 } });
+  const doc = await col.findOne({ slug });
+  if (doc) {
+    const attached = await attachAuthorInfo([doc]);
+    return attached[0];
+  }
+  return null;
+}
+
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+}
+
 export async function createBlog(data: Record<string, unknown>): Promise<IBlog> {
+  const slug = (data.slug as string) || generateSlug(data.title as string);
   const doc: IBlog = {
     title: data.title as string,
     content: data.content as string,
     authorId: typeof data.authorId === "string" ? toObjectId(data.authorId as string) : data.authorId as ObjectId,
     tags: (data.tags as string[]) || [],
     coverImage: data.coverImage as string | undefined,
+    slug,
     status: (data.status as IBlog["status"]) || "Draft",
     viewCount: 0,
     createdAt: new Date(),

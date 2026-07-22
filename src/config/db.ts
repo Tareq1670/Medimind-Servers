@@ -26,9 +26,6 @@ export async function connectDB(): Promise<void> {
     } catch (err) {
       connecting = null;
       console.error("Failed to connect to MongoDB:", err);
-      if (process.env.NODE_ENV !== "production") {
-        process.exit(1);
-      }
       throw err;
     }
   })();

@@ -10,6 +10,7 @@ interface EnvConfig {
   mongodbUri: string;
   dbName: string;
   frontendUrl: string;
+  allowedOrigins: string[];
   jwksUri: string;
   imagebbApiKey: string;
   geminiApiKey: string;
@@ -44,7 +45,14 @@ function loadEnvConfig(): EnvConfig {
   const jwksUri =
     process.env.JWKS_URI ?? `${frontendUrl}/api/auth/jwks`;
 
-  return { port, nodeEnv, mongodbUri, dbName, frontendUrl, jwksUri, imagebbApiKey, geminiApiKey, groqApiKey };
+  const allowedOrigins = [
+    frontendUrl,
+    ...(process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim().replace(/\/+$/, ""))
+      : []),
+  ].filter((v, i, a) => a.indexOf(v) === i);
+
+  return { port, nodeEnv, mongodbUri, dbName, frontendUrl, allowedOrigins, jwksUri, imagebbApiKey, geminiApiKey, groqApiKey };
 }
 
 export const env = loadEnvConfig();

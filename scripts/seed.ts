@@ -22,9 +22,9 @@ const db = () => nativeClient.db(DB_NAME);
 
 async function dropCollections() {
   const appCollections = [
-    "users", "medicines", "doctors", "healthconditions",
-    "blogs", "reviews", "chatsessions", "reportanalyses",
-    "healthrecords", "symptomanalyses",
+    "users", "medicines", "doctors", "conditions",
+    "blogs", "reviews", "chat_sessions", "report_analyses",
+    "health_records", "symptom_analyses",
   ];
   const authCollections = ["user", "account", "session", "jwks"];
 
@@ -150,8 +150,8 @@ const DOCTORS_DATA: {
 
 async function createDoctors() {
   const now = new Date();
-  const doctors = DOCTORS_DATA.map((d) => ({
-    userId: new ObjectId(),
+  const doctors = DOCTORS_DATA.map((d, i) => ({
+    userId: i === 0 ? DOCTOR_USER_ID : new ObjectId(),
     specialty: d.specialty,
     experienceYears: d.exp,
     hospitalAffiliation: d.hospital,
@@ -375,7 +375,7 @@ async function createConditions() {
     updatedAt: now,
   }));
 
-  const result = await db().collection("healthconditions").insertMany(conditions);
+  const result = await db().collection("conditions").insertMany(conditions);
   const ids = Object.values(result.insertedIds);
   console.log(`Created ${ids.length} health conditions`);
   return ids;
@@ -398,6 +398,15 @@ const BLOGS_DATA: {
   { title: "Preventing and Managing Seasonal Flu", tags: ["flu", "influenza", "prevention", "seasonal"], content: "Seasonal influenza affects millions annually, causing significant illness and sometimes serious complications. This article covers how the flu virus spreads, the importance of annual vaccination, symptoms to watch for, treatment options including antiviral medications, home care strategies, and warning signs that require medical attention.\n\n## Flu vs. Cold\n\nFlu symptoms typically come on suddenly and include high fever, body aches, and fatigue. Colds are usually milder with more nasal symptoms. Antiviral medications like oseltamivir work best when started within 48 hours of symptom onset.\n\n## Prevention\n\nAnnual flu vaccination is the most effective prevention strategy. Hand hygiene, covering coughs, avoiding close contact with sick individuals, and staying home when ill all help reduce transmission." },
 ];
 
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+}
+
 async function createBlogs() {
   const now = new Date();
   const blogs = BLOGS_DATA.map((b) => ({
@@ -405,6 +414,7 @@ async function createBlogs() {
     content: b.content,
     authorId: ADMIN_ID,
     tags: b.tags,
+    slug: generateSlug(b.title),
     status: "Published",
     viewCount: Math.floor(Math.random() * 500) + 50,
     createdAt: new Date(now.getTime() - Math.floor(Math.random() * 30) * 86400000),
@@ -543,7 +553,7 @@ async function createHealthRecords() {
     },
   ];
 
-  await db().collection("healthrecords").insertMany(records);
+  await db().collection("health_records").insertMany(records);
   console.log(`Created ${records.length} health records`);
 }
 
@@ -584,7 +594,7 @@ async function createChatSessions() {
     },
   ];
 
-  await db().collection("chatsessions").insertMany(sessions);
+  await db().collection("chat_sessions").insertMany(sessions);
   console.log(`Created ${sessions.length} chat sessions`);
 }
 
@@ -646,7 +656,7 @@ async function createSymptomAnalyses() {
     },
   ];
 
-  await db().collection("symptomanalyses").insertMany(analyses);
+  await db().collection("symptom_analyses").insertMany(analyses);
   console.log(`Created ${analyses.length} symptom analyses`);
 }
 
@@ -691,7 +701,7 @@ async function createReportAnalyses() {
     },
   ];
 
-  await db().collection("reportanalyses").insertMany(analyses);
+  await db().collection("report_analyses").insertMany(analyses);
   console.log(`Created ${analyses.length} report analyses`);
 }
 

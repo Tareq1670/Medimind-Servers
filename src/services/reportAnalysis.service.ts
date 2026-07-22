@@ -1,13 +1,14 @@
 import { ObjectId } from "mongodb";
 import { reportAnalysesCol, usersCol, toObjectId } from "../db/collections.js";
 import type { IReportAnalysis, PaginatedResult } from "../types/models.js";
-import { paginate, andFilter } from "../utils/pagination.js";
+import { paginate, andFilter, regexSearch } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
   limit: number;
   reportType?: string;
   patientId?: string;
+  search?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -18,6 +19,9 @@ function buildFilter(opts: QueryOptions): Record<string, unknown> {
   }
   if (opts.patientId) {
     conditions.push({ patientId: opts.patientId });
+  }
+  if (opts.search) {
+    conditions.push(regexSearch(["reportName", "analysisSummary", "aiDoctorNotes"], opts.search));
   }
 
   return andFilter(conditions);

@@ -28,6 +28,7 @@ export const symptomAnalysisQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(10),
     patientId: z.string().optional(),
+    search: z.string().optional(),
   }),
   params: z.object({}).default({}),
 });

@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose-cjs";
 import { ObjectId } from "mongodb";
 import { env } from "../config/env.js";
 import { getDB } from "../config/db.js";
+import { CollectionName } from "../db/collections.js";
 import type { AuthPayload } from "../types/auth.js";
 
 let JWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -88,7 +89,7 @@ export async function verifyToken(
       const filter: Record<string, unknown> = ObjectId.isValid(userId)
         ? { _id: new ObjectId(userId) }
         : { _id: userId };
-      const userExists = await db.collection("user").countDocuments(
+      const userExists = await db.collection(CollectionName.USERS).countDocuments(
         filter,
         { limit: 1 }
       );
@@ -96,9 +97,10 @@ export async function verifyToken(
         res.status(401).json({ success: false, message: "User account no longer exists" });
         return;
       }
-    } catch {
-      // DB lookup failed — proceed with token-only verification
-      // rather than blocking all authenticated requests
+    } catch (dbErr) {
+      console.error("Auth middleware DB lookup failed:", dbErr);
+      res.status(503).json({ success: false, message: "Database unavailable" });
+      return;
     }
 
     req.user = {

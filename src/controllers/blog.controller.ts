@@ -21,6 +21,19 @@ export async function getAllBlogs(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function getBlogBySlug(req: Request, res: Response): Promise<void> {
+  try {
+    const blog = await blogService.getBlogBySlug(req.params.slug);
+    if (!blog) {
+      sendError(res, "Blog not found", 404);
+      return;
+    }
+    sendSuccess(res, blog);
+  } catch (err) {
+    sendError(res, err instanceof Error ? err.message : "Failed to fetch blog");
+  }
+}
+
 export async function getBlogById(req: Request, res: Response): Promise<void> {
   try {
     const blog = await blogService.getBlogById(req.params.id);

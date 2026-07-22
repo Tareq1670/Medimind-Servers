@@ -30,6 +30,18 @@ export const chatMessageSchema = z.object({
   params: z.object({}).default({}),
 });
 
+export const publicChatSchema = z.object({
+  body: z.object({
+    message: z.string().min(1).max(5000),
+    history: z.array(z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string(),
+    })).max(20).optional(),
+  }),
+  query: z.object({}).default({}),
+  params: z.object({}).default({}),
+});
+
 export const generateBlogSchema = z.object({
   body: z.object({
     topic: z.string().min(1).max(500),
@@ -81,6 +93,7 @@ export const aiHistoryQuerySchema = z.object({
 export type SymptomAnalysisInput = z.infer<typeof symptomAnalysisSchema>["body"];
 export type ReportAnalysisInput = z.infer<typeof reportAnalysisSchema>["body"];
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>["body"];
+export type PublicChatInput = z.infer<typeof publicChatSchema>["body"];
 export type GenerateBlogInput = z.infer<typeof generateBlogSchema>["body"];
 export type RecommendationInput = z.infer<typeof recommendationSchema>["body"];
 export type ClassifyTagsInput = z.infer<typeof classifyTagsSchema>["body"];

@@ -18,6 +18,8 @@ router.get(
   blogController.getAllBlogs
 );
 
+router.get("/slug/:slug", blogController.getBlogBySlug);
+
 router.get("/:id", blogController.getBlogById);
 
 router.post(
@@ -30,6 +32,15 @@ router.post(
 );
 
 router.put(
+  "/:id",
+  verifyToken,
+  authorizeRoles("admin", "doctor"),
+  upload.single("coverImage"),
+  validateRequest(updateBlogSchema),
+  blogController.updateBlog
+);
+
+router.patch(
   "/:id",
   verifyToken,
   authorizeRoles("admin", "doctor"),

@@ -8,8 +8,14 @@ const router = Router();
 router.get(
   "/dashboard",
   verifyToken,
-  authorizeRoles("admin"),
   statsController.getDashboard
+);
+
+router.get(
+  "/analytics",
+  verifyToken,
+  authorizeRoles("admin"),
+  statsController.getAnalytics
 );
 
 export default router;

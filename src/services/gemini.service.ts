@@ -18,21 +18,21 @@ function getClient(): GoogleGenerativeAI {
 
 function getProModel(): GenerativeModel {
   if (!proModel) {
-    proModel = getClient().getGenerativeModel({ model: "gemini-1.5-pro" });
+    proModel = getClient().getGenerativeModel({ model: "gemini-2.0-flash" });
   }
   return proModel;
 }
 
 function getFlashModel(): GenerativeModel {
   if (!flashModel) {
-    flashModel = getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
+    flashModel = getClient().getGenerativeModel({ model: "gemini-2.0-flash" });
   }
   return flashModel;
 }
 
 function getVisionModel(): GenerativeModel {
   if (!visionModel) {
-    visionModel = getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
+    visionModel = getClient().getGenerativeModel({ model: "gemini-2.0-flash" });
   }
   return visionModel;
 }
@@ -58,12 +58,17 @@ export async function streamChat(
 ): Promise<string> {
   const model = getFlashModel();
 
+  const history = messages.slice(0, -1).map((m) => ({
+    role: m.role,
+    parts: [{ text: m.content }],
+  }));
+
   const chat = model.startChat({
-    systemInstruction: { role: "model", parts: [{ text: systemPrompt }] },
-    history: messages.slice(0, -1).map((m) => ({
-      role: m.role,
-      parts: [{ text: m.content }],
-    })),
+    systemInstruction: {
+      role: "user",
+      parts: [{ text: systemPrompt }],
+    },
+    history,
   });
 
   const lastMessage = messages[messages.length - 1];
@@ -79,6 +84,28 @@ export async function streamChat(
   }
 
   return fullText;
+}
+
+export async function generateChat(
+  messages: { role: "user" | "model"; content: string }[],
+  systemPrompt: string
+): Promise<string> {
+  const model = getFlashModel();
+
+  const contents = messages.map((m) => ({
+    role: m.role,
+    parts: [{ text: m.content }],
+  }));
+
+  const result = await model.generateContent({
+    systemInstruction: {
+      role: "user",
+      parts: [{ text: systemPrompt }],
+    },
+    contents,
+  });
+
+  return result.response.text();
 }
 
 export async function analyzeImageWithVision(

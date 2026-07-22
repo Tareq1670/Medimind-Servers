@@ -41,6 +41,15 @@ router.put(
   medicineController.updateMedicine
 );
 
+router.patch(
+  "/:id",
+  verifyToken,
+  authorizeRoles("admin", "doctor"),
+  upload.single("image"),
+  validateRequest(updateMedicineSchema),
+  medicineController.updateMedicine
+);
+
 router.delete(
   "/:id",
   verifyToken,

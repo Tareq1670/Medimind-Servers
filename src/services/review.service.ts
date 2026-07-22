@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb";
 import { reviewsCol, usersCol, toObjectId } from "../db/collections.js";
 import type { IReview, TargetType, PaginatedResult } from "../types/models.js";
-import { paginate, andFilter } from "../utils/pagination.js";
+import { paginate, andFilter, regexSearch } from "../utils/pagination.js";
 
 interface QueryOptions {
   page: number;
@@ -10,6 +10,7 @@ interface QueryOptions {
   targetType?: TargetType;
   rating?: number;
   approved?: string;
+  search?: string;
 }
 
 function buildFilter(opts: QueryOptions): Record<string, unknown> {
@@ -28,6 +29,9 @@ function buildFilter(opts: QueryOptions): Record<string, unknown> {
     conditions.push({ isApproved: true });
   } else if (opts.approved === "false") {
     conditions.push({ isApproved: false });
+  }
+  if (opts.search) {
+    conditions.push(regexSearch(["comment"], opts.search));
   }
 
   return andFilter(conditions);

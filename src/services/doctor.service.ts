@@ -11,7 +11,6 @@ interface QueryOptions {
   minFee?: number;
   maxFee?: number;
   verified?: string;
-  minRating?: number;
   sortBy?: string;
   sortOrder?: string;
 }
@@ -30,9 +29,6 @@ function buildFilter(opts: QueryOptions): Record<string, unknown> {
     if (opts.minFee !== undefined) feeFilter.$gte = opts.minFee;
     if (opts.maxFee !== undefined) feeFilter.$lte = opts.maxFee;
     conditions.push({ consultationFee: feeFilter });
-  }
-  if (opts.minRating !== undefined) {
-    conditions.push({ rating: { $gte: opts.minRating } });
   }
   if (opts.verified === "true") {
     conditions.push({ isVerified: true });

@@ -7,6 +7,7 @@ import {
   symptomAnalysisSchema,
   reportAnalysisSchema,
   chatMessageSchema,
+  publicChatSchema,
   generateBlogSchema,
   recommendationSchema,
   healthInsightsSchema,
@@ -21,7 +22,6 @@ router.use(aiRateLimiter);
 
 router.post(
   "/symptom-analysis",
-  verifyToken,
   validateRequest(symptomAnalysisSchema),
   aiController.analyzeSymptoms
 );
@@ -32,6 +32,12 @@ router.post(
   upload.single("reportImage"),
   validateRequest(reportAnalysisSchema),
   aiController.analyzeReport
+);
+
+router.post(
+  "/public-chat",
+  validateRequest(publicChatSchema),
+  aiController.publicChatMessage
 );
 
 router.post(
