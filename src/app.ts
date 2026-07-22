@@ -31,15 +31,34 @@ const allowedOrigins = [
     : []),
 ];
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  })
+);
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (env.nodeEnv !== "production") return callback(null, true);
+      const vercelPatterns = [
+        ".vercel.app",
+        ".vercel-staging.com",
+        ".now.sh",
+      ];
+      const isVercelPreview = vercelPatterns.some((p) =>
+        origin.toLowerCase().includes(p)
+      );
+      if (isVercelPreview) {
+        console.log(`[CORS] Allowing Vercel preview origin: ${origin}`);
+        return callback(null, true);
       }
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })

@@ -2,8 +2,10 @@ import { ObjectId } from "mongodb";
 import { symptomAnalysesCol, reportAnalysesCol, chatSessionsCol, healthRecordsCol, toObjectId } from "../db/collections.js";
 import type { ISymptomAnalysis, IAiSymptomAnalysis, IReportAnalysis, IChatSession, PaginatedResult } from "../types/models.js";
 import { generateWithPro, generateWithFlash, streamChat, analyzeImageWithVision } from "./gemini.service.js";
-import { analyzeWithGroq, chatWithGroq } from "./groq.service.js";
+import { analyzeWithGroq, chatWithGroq, streamChatWithGroq } from "./groq.service.js";
 import { paginate } from "../utils/pagination.js";
+
+const MAX_STREAMING_DURATION = 55000; // 55 seconds - leave buffer for Vercel 60s limit
 
 interface HistoryQuery {
   page: number;
@@ -420,19 +422,36 @@ export async function chatMessage(
   const chatMessages = [...history, { role: "user" as const, content: message }];
   let fullResponse = "";
 
-  try {
-    fullResponse = await streamChat(chatMessages, SYSTEM_PROMPT, (chunk) => {
-      onChunk?.(chunk);
-    });
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[chat] Gemini streaming failed, trying Groq fallback:", errMsg);
+  const streamingPromise = (async () => {
     try {
-      fullResponse = await chatWithGroq(chatMessages, SYSTEM_PROMPT);
-      onChunk?.(fullResponse);
-    } catch (groqErr) {
-      console.error("[chat] Groq fallback also failed:", groqErr instanceof Error ? groqErr.message : groqErr);
-      fullResponse = `${MEDICAL_DISCLAIMER}\n\nI'm sorry, I'm having trouble connecting to the AI service right now. This could be due to a temporary issue. Please try again in a moment.`;
+      fullResponse = await streamChat(chatMessages, SYSTEM_PROMPT, (chunk) => {
+        onChunk?.(chunk);
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[chat] Gemini streaming failed, trying Groq fallback:", errMsg);
+      try {
+        fullResponse = await chatWithGroq(chatMessages, SYSTEM_PROMPT);
+        onChunk?.(fullResponse);
+      } catch (groqErr) {
+        console.error("[chat] Groq fallback also failed:", groqErr instanceof Error ? groqErr.message : groqErr);
+        fullResponse = `${MEDICAL_DISCLAIMER}\n\nI'm sorry, I'm having trouble connecting to the AI service right now. This could be due to a temporary issue. Please try again in a moment.`;
+        onChunk?.(fullResponse);
+      }
+    }
+  })();
+
+  // Add timeout to prevent Vercel function timeout
+  const timeoutPromise = new Promise<void>((_, reject) => {
+    setTimeout(() => reject(new Error("Streaming timeout - Vercel function limit reached")), MAX_STREAMING_DURATION);
+  });
+
+  try {
+    await Promise.race([streamingPromise, timeoutPromise]);
+  } catch (timeoutErr) {
+    console.error("[chat] Streaming timed out:", timeoutErr instanceof Error ? timeoutErr.message : timeoutErr);
+    if (!fullResponse) {
+      fullResponse = `${MEDICAL_DISCLAIMER}\n\nThe response is taking too long. Please try a shorter question or try again.`;
       onChunk?.(fullResponse);
     }
   }

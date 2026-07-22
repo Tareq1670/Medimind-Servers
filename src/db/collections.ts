@@ -6,7 +6,7 @@ import type {
 } from "../types/models.js";
 
 export enum CollectionName {
-  USERS = "users",
+  USERS = "user",
   MEDICINES = "medicines",
   DOCTORS = "doctors",
   CONDITIONS = "conditions",

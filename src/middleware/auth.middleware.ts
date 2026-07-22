@@ -12,13 +12,19 @@ const JWKS_RETRY_COOLDOWN = 30_000;
 
 function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
   if (!JWKS) {
-    JWKS = createRemoteJWKSet(new URL(env.jwksUri), {
-      cacheMaxAge: 300_000,
+    const jwksUrl = env.jwksUri;
+    console.log(`[Auth] Initializing JWKS from: ${jwksUrl}`);
+    JWKS = createRemoteJWKSet(new URL(jwksUrl), {
+      cacheMaxAge: 600_000,
       cooldownDuration: 30_000,
-      timeoutDuration: 3_000,
+      timeoutDuration: 10_000,
     });
   }
   return JWKS;
+}
+
+function resetJWKS(): void {
+  JWKS = null;
 }
 
 function isJwksFetchError(err: unknown): boolean {
@@ -66,7 +72,7 @@ export async function verifyToken(
         const now = Date.now();
         if (now - lastJwksFetchAttempt > JWKS_RETRY_COOLDOWN) {
           lastJwksFetchAttempt = now;
-          JWKS = null;
+          resetJWKS();
         }
         res.status(503).json({
           success: false,
