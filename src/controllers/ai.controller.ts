@@ -129,10 +129,17 @@ async function generateFollowUps(
 export async function publicChatMessage(req: Request, res: Response): Promise<void> {
   const { message, history } = req.body;
 
+  if (!message || typeof message !== "string" || !message.trim()) {
+    res.write(`data: ${JSON.stringify({ type: "error", message: "Message is required" })}\n\n`);
+    res.end();
+    return;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("x-vercel-no-buffer", "1");
   res.flushHeaders();
 
   let disconnected = false;
@@ -267,10 +274,17 @@ export async function chatMessage(req: Request, res: Response): Promise<void> {
 
     const { message, sessionId } = req.body;
 
+    if (!message || typeof message !== "string" || !message.trim()) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: "Message is required" })}\n\n`);
+      res.end();
+      return;
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("x-vercel-no-buffer", "1");
     res.flushHeaders();
 
     let clientDisconnected = false;
